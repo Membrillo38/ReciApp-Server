@@ -33,7 +33,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 - El borrado de cuenta es idempotente y atómico dentro de PostgreSQL; mantiene `usage_events` para preservar cuota anual tras reactivar la misma identidad Apple.
 - El cliente respeta `Retry-After`, distingue 401/403/404/422/429/503 y evita repetir automáticamente un POST de extracción cuyo resultado sea incierto.
 - El identificador de entrega `client_delivery_id` del cliente requiere la columna creada por `migrations/008_extract_delivery_idempotency.sql`.
-- Pro depende de Superwall: iOS identifica al usuario con su UUID y FastAPI valida `Svix` en `/v1/webhooks/superwall`. El código está integrado, pero no pude verificar una compra real ni recepción reciente en producción. La documentación de configuración se contradice: `SUPERWALL_SERVER.md` dice que el webhook está configurado; `PRICING_EXPERIMENT_IMPLEMENTATION.md` registra 0 endpoints activos. Sin evento de compra firmado y `GET /v1/me` posterior con `is_pro=true`, sincronización Pro queda sin prueba.
+- Pro depende de Superwall: iOS identifica al usuario con su UUID y FastAPI valida `Svix` en `/v1/webhooks/superwall`. La consulta de producción confirma recepción/procesamiento reciente y secreto configurado; dos documentos operativos discrepan sobre la configuración del endpoint y deben actualizarse. Falta una compra/restauración sandbox controlada seguida del `GET /v1/me` de esa cuenta.
 
 ## Riesgos pendientes
 
@@ -58,9 +58,9 @@ La app programa una notificación local solo cuando su sondeo detecta que termin
 
 La configuración Compose inspeccionada tenía solo `recipe-backend`, sin worker separado; `WORKER_ENABLED` usa `false` por defecto y la inspección remota no encontró contenedor `recipe-worker`. Si el proceso API se reinicia durante una extracción, FastAPI puede perder la tarea en memoria y la fila queda para recuperación posterior. Preparé `recipe-worker` en el commit local `1de66d1` de `codex/reciapp-durable-worker`, con el mismo image/env, acceso privado a Postgres y leases. El repo de infraestructura no tiene remoto Git configurado, así que el commit sigue local. La red `reciapp-internal` permite salida (`internal=false`). `/ready` comprueba la base y el esquema, no que el worker esté vivo; después del rollout también hay que verificar el contenedor y su log de arranque.
 
-### Pro en producción: falta una prueba de extremo a extremo
+### Pro en producción: webhook recibe eventos; falta compra/restauración controlada
 
-La integración de código está: `SubscriptionService.identify()` envía el UUID backend como `user_id`; `/v1/webhooks/superwall` exige firma Svix y actualiza `profiles.is_pro`; la app refresca `/v1/me` tras compra/restauración. Pero no hay prueba autenticada de compra/restore ni evidencia de entrega del webhook en esta auditoría. Un webhook ausente o mal firmado deja la cuenta backend como Free y el servidor puede rechazar imports Pro con `FREE_YEARLY_LIMIT`, aunque StoreKit marque entitlement local. Verificar endpoint activo, secret configurado sin leerlo y un evento sandbox de extremo a extremo.
+La integración de código está: `SubscriptionService.identify()` envía el UUID backend como `user_id`; `/v1/webhooks/superwall` exige firma Svix y actualiza `profiles.is_pro`; la app refresca `/v1/me` tras compra/restauración. Verifiqué sin leer secretos que el secreto del webhook está configurado. En `subscription_events` hay 7 eventos Superwall en los últimos 30 días: 7 procesados, 0 fallidos (3 eventos Pro-on, 2 Pro-off y 2 cambios de estado). Esto confirma recepción y procesamiento real del webhook. Sigue sin probarse una compra/restauración sandbox completa en un dispositivo junto con el `GET /v1/me` de esa misma cuenta.
 
 ### Pruebas y producción
 
@@ -71,7 +71,7 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - Consulté el SQL real de readiness en un PostgreSQL temporal aislado: migración 008 correcta → `delivery_column=t`, `delivery_index=t`; índice no único y mal definido con el mismo nombre → `delivery_index=f`.
 - No pude consultar issues actuales de Sentry: no hay `SENTRY_AUTH_TOKEN` local configurado. No se leyó ni compartió ningún token.
 - `/health` y `/ready` públicos respondieron HTTP 200 en la última consulta. La respuesta pública de `/ready` no identifica qué build ni qué comprobaciones ejecuta, así que no confirma por sí sola el estado de la migración.
-- No se probó una cuenta autenticada ni una extracción real.
+- No se probó Apple login ni una extracción real en dispositivo; tampoco la compra/restauración sandbox de extremo a extremo, aunque sí hay webhooks Superwall procesados en producción.
 - Los cambios de API/app están en las ramas remotas `codex/reciapp-server-integration` y `codex/reciapp-ios-integration`; la configuración del worker está en un commit local de `codex/reciapp-durable-worker` porque el repo ops no tiene remoto. Ninguno se ha desplegado en producción ni publicado en App Store.
 
 ## Siguiente orden de aceptación
