@@ -745,7 +745,7 @@ def auth_apple(request: Request, body: AuthAppleRequest) -> AuthTokenResponse:
 def auth_refresh(request: Request, body: AuthRefreshRequest) -> AuthTokenResponse:
     _require_auth_secret()
     try:
-        pair = rotate_refresh_token(body.refresh_token)
+        pair = rotate_refresh_token(body.refresh_token, body.request_id)
     except Exception as exc:
         auth_error(request=request, code="REFRESH_DATABASE_ERROR", phase="refresh_token", status=503, exc=exc)
         raise HTTPException(status_code=503, detail={"code": "REFRESH_DATABASE_ERROR", "message": "Authentication temporarily unavailable"}, headers={"Retry-After": "1"}) from exc
@@ -762,7 +762,7 @@ def auth_refresh(request: Request, body: AuthRefreshRequest) -> AuthTokenRespons
 @app.post("/v1/auth/logout", response_model=OkResponse)
 def auth_logout(request: Request, body: AuthLogoutRequest) -> OkResponse:
     try:
-        revoke_refresh_token(body.refresh_token)
+        revoke_refresh_token(body.refresh_token, body.request_id)
     except Exception as exc:
         auth_error(request=request, code="LOGOUT_DATABASE_ERROR", phase="logout", status=503, exc=exc)
         raise HTTPException(status_code=503, detail={"code": "LOGOUT_DATABASE_ERROR", "message": "Logout temporarily unavailable"}) from exc

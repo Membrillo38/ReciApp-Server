@@ -149,8 +149,21 @@ async def probe_postgres() -> None:
                      where key.ord <= ix.indnkeyatts
                      order by key.ord
                 ) = array['user_id', 'client_delivery_id']::name[]
-          ) as delivery_index
+          ) as delivery_index,
+          (
+            select count(*) = 3
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'auth_refresh_tokens'
+               and column_name = any(array[
+                   'rotation_request_id',
+                   'rotation_retry_until',
+                   'rotated_token_hash'
+               ])
+          ) as refresh_replay_columns
         """,
     )
     if not row or not row.get("delivery_column") or not row.get("delivery_index"):
         raise ValueError("Required import idempotency schema is missing")
+    if not row.get("refresh_replay_columns"):
+        raise ValueError("Required refresh replay schema is missing")

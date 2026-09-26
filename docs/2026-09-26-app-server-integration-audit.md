@@ -12,6 +12,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 - `GET /v1/me` ahora devuelve `free_used_this_year` además del campo histórico `free_used_this_week`. Ambos representan el mismo contador anual durante la transición.
 - El mensaje de límite preventivo de la app ahora dice “por año”, que coincide con la cuota real de tres importaciones nuevas al año UTC.
 - La renovación del refresh token ahora revoca el token anterior e inserta el siguiente en una única sentencia transaccional. Antes eran operaciones separadas: si fallaba el insert después de revocar, se podía dejar al usuario sin token válido.
+- La app persiste un `request_id` en Keychain antes de renovar. Si se pierde la respuesta tras rotar el token, reintenta con el mismo ID y servidor devuelve el mismo sucesor durante 15 minutos. Antes ese caso podía cerrar la sesión y forzar login con Apple. Logout revoca también el sucesor desconocido; replay exige sucesor aún activo para no reabrir sesión tras logout. La migración 009 añade solo columnas opcionales; `/ready` ahora las exige.
 - El borrado de cuenta ahora limpia biblioteca, trabajos y accesos compartidos, ledger y eventos de seguridad, revoca sesiones y cierra el perfil en una sola transacción. Antes se ignoraban errores de limpieza y se podía responder éxito dejando datos ligados a la cuenta. Un fallo DB ahora responde `503 ACCOUNT_DELETION_UNAVAILABLE`; el cliente conserva la sesión para reintentar. Cada URL de trabajo se anonimiza con un valor distinto por ID, para no chocar con el índice único de imports activos. También cancela trabajos pendientes y `save_user_recipe` ya no puede volver a vincular una receta si un worker termina tras cerrar la cuenta.
 - Los errores transitorios de endpoints de autenticación y perfil ahora incluyen `detail.code/message` además del sobre superior histórico. El cliente Swift compartía el parser para ambos formatos y antes solo entendía el campo `detail`.
 - Los trabajos fallidos ahora incluyen un `error_code` estable. iOS ofrece reintento manual para `extraction_retryable` y `stale_job`, con un nuevo ID de entrega; errores permanentes como `link_in_bio` no reintentan en bucle.
@@ -21,6 +22,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 - Mejoré los eventos de diagnóstico de cuota y límites: ahora guardan el código concreto (`FREE_YEARLY_LIMIT` o `PRO_FAIR_USE_LIMIT`), UUID interno de cuenta en los rechazos por usuario, límite/ventana y `X-Correlation-ID`; no guardan URLs ni cuerpos. Añadí cobertura para ambos límites Pro/Free y el rate limit por usuario.
 - Actualicé las pruebas del servidor que apuntaban a APIs antiguas del extractor/STT, límites y precios anteriores; mantienen la intención de comprobar los casos actuales.
 - Añadidas pruebas unitarias para la rotación atómica del refresh token y el contador anual de perfil.
+- La nueva suite completa del servidor pasa con 251 tests y 2 skips. `ClientStateHarness` pasa 47 tests. Migraciones 008 y 009 siguen pendientes en producción; desplegar código sin ambas hará que `/ready` falle y no completa imports/refresh replay.
 - Añadí cobertura iOS para respuestas HTTP 500/502: conserva el import y permite recuperarlo sin repetir automáticamente el `POST` incierto.
 - ShareInbox guardaba la entrega, pero repetía errores transitorios del extractor cada 2 segundos. Ahora aplica backoff exponencial hasta 60 segundos, respeta `Retry-After` cuando fija un mínimo y limpia el estado al completar o reintentar manualmente. Verificado con 46 pruebas del `ClientStateHarness` y build iOS Simulator.
 - Corregí una ventana de pérdida al aceptar un job desde ShareInbox: la app persistía el `job_id` antes de confirmar la entrega local. Si iOS cierra la app tras recibir la respuesta del servidor, el job se puede reanudar; si se cierra antes, el mismo `client_delivery_id` permite repetir el envío de forma idempotente. Añadí un contrato cruzado que protege el orden.
@@ -85,7 +87,7 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 
 ## Siguiente orden de aceptación
 
-1. Aplicar migración 008 en producción y desplegar backend con readiness de esquema; comprobar `/ready`.
+1. Aplicar migraciones 008 y 009 en producción, desplegar backend con readiness de esquema y comprobar `/ready`.
 2. Verificar configuración real del webhook Superwall y compra/restauración sandbox contra `/v1/me`.
 3. Publicar el cliente que envía `client_delivery_id` solo después del paso 1.
 4. Con una cuenta de prueba: Apple login, renovación, perfil Pro/free, biblioteca, detalle traducido, URL nueva/cacheada, cola, reanudación, rate limit y borrado.

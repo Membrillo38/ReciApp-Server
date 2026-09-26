@@ -11,7 +11,11 @@ def test_ready_requires_delivery_column_and_unique_index(monkeypatch):
 
     def fetch(_sql):
         queries.append(_sql)
-        return {"delivery_column": True, "delivery_index": True}
+        return {
+            "delivery_column": True,
+            "delivery_index": True,
+            "refresh_replay_columns": True,
+        }
 
     monkeypatch.setattr(
         db,
@@ -26,6 +30,9 @@ def test_ready_requires_delivery_column_and_unique_index(monkeypatch):
     assert "ix.indisready" in queries[0]
     assert "(client_delivery_id IS NOT NULL)" in queries[0]
     assert "array['user_id', 'client_delivery_id']::name[]" in queries[0]
+    assert "rotation_request_id" in queries[0]
+    assert "rotation_retry_until" in queries[0]
+    assert "rotated_token_hash" in queries[0]
 
 
 @pytest.mark.parametrize(
@@ -38,6 +45,20 @@ def test_ready_requires_delivery_column_and_unique_index(monkeypatch):
 def test_ready_fails_closed_when_idempotency_migration_is_incomplete(monkeypatch, schema_state):
     monkeypatch.setattr(db, "fetch_one", lambda _sql: schema_state)
     with pytest.raises(ValueError, match="idempotency schema is missing"):
+        asyncio.run(db.probe_postgres())
+
+
+def test_ready_fails_closed_when_refresh_replay_columns_are_missing(monkeypatch):
+    monkeypatch.setattr(
+        db,
+        "fetch_one",
+        lambda _sql: {
+            "delivery_column": True,
+            "delivery_index": True,
+            "refresh_replay_columns": False,
+        },
+    )
+    with pytest.raises(ValueError, match="refresh replay schema is missing"):
         asyncio.run(db.probe_postgres())
 
 

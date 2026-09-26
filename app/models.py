@@ -182,10 +182,12 @@ class AuthAppleRequest(BaseModel):
 
 class AuthRefreshRequest(BaseModel):
     refresh_token: str
+    request_id: UUID | None = None
 
 
 class AuthLogoutRequest(BaseModel):
     refresh_token: str
+    request_id: UUID | None = None
 
 
 class AuthUserResponse(BaseModel):
