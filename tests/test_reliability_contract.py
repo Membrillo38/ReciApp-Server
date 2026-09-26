@@ -166,6 +166,30 @@ def test_share_delivery_is_acknowledged_only_after_job_is_persisted(ios_root: Pa
     assert persisted < acknowledged
 
 
+def test_account_deletion_purges_user_shopping_list(ios_root: Path):
+    view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    store = (ios_root / "ReciApp/Services/ShoppingListStore.swift").read_text(encoding="utf-8")
+    purge = view_model.split("private func purgeLocalUserDiskCaches", 1)[1].split(
+        "private func persistRecipeCache", 1
+    )[0]
+    assert "ShoppingListStore.clear(for: userID.uuidString)" in purge
+    assert "removeObject(forKey: key(for: userID))" in store
+
+
+def test_account_deletion_clears_only_that_users_pending_shares(ios_root: Path):
+    view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    share_inbox = (ios_root / "ReciApp/Services/ShareInbox.swift").read_text(encoding="utf-8")
+    purge = view_model.split("private func purgeLocalUserDiskCaches", 1)[1].split(
+        "private func persistRecipeCache", 1
+    )[0]
+    clear = share_inbox.split("static func clear(userID:", 1)[1].split(
+        "static func markProcessed", 1
+    )[0]
+    assert "ShareInbox.clear(userID: userID)" in purge
+    assert "$0.ownerUserID == userID" in clear
+    assert "$0.ownerUserID != userID" in clear
+
+
 @pytest.mark.skip(reason="Replaced by runnable ClientStateHarness behavioral tests")
 def test_ios_recipe_refresh_is_cached_coalesced_and_not_blocked_by_profile():
     view_model = Path("IosAPP/ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
