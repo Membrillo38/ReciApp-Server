@@ -76,10 +76,10 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 
 ### Pruebas y producción
 
-- Compilación iOS Simulator: correcta (`xcodebuild`, Debug, sin firma).
-- Pruebas Swift del `ClientStateHarness`: 47 pasaron.
-- Suite completa servidor: 253 pasaron, 2 omitidas. Las 2 omisiones corresponden a contratos cruzados ya cubiertos por harness. La ejecución local usa shim temporal para Sentry, por lo que telemetría Sentry no queda validada.
-- Xcode Debug unsigned Simulator: build actual correcto con dependencias SwiftPM resueltas. No hubo ejecución visual ni prueba firmada en dispositivo.
+- La última compilación iOS Simulator exitosa registrada fue Debug sin firma. En esta revalidación `xcodebuild` no llegó a compilar: DNS no resolvió GitHub para descargar dependencias SwiftPM y CoreSimulatorService tampoco estaba disponible. No equivale a fallo de compilación del código.
+- Pruebas Swift del `ClientStateHarness`: 47 pasaron en esta revalidación.
+- Suite completa servidor: 253 pasaron, 2 omitidas en esta revalidación. Las 2 omisiones corresponden a contratos cruzados ya cubiertos por harness. La ejecución local usa shim temporal para Sentry, por lo que telemetría Sentry no queda validada.
+- No hubo ejecución visual ni prueba firmada en dispositivo.
 - Consulté el SQL real de readiness en un PostgreSQL temporal aislado: migración 008 correcta → `delivery_column=t`, `delivery_index=t`; índice no único y mal definido con el mismo nombre → `delivery_index=f`.
 - El contenedor de producción tiene DSN Sentry configurado y entorno `production`; no pude consultar issues porque falta `SENTRY_AUTH_TOKEN` local. No se leyó ni compartió ningún token ni DSN.
 - En la revalidación pública anterior, `/health` y `/ready` respondieron HTTP 200. En esta continuación no pude volver a consultar producción: DNS no resolvió `51-255-43-100.sslip.io`; por tanto, los 200 anteriores no son una comprobación de ahora. La respuesta previa de `/ready` tampoco identificaba build ni comprobaciones, así que no confirmaba por sí sola 008/009.
