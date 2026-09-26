@@ -5,7 +5,7 @@ Repositorios revisados: `ReciApp-iOS` y `ReciApp-Server`.
 
 ## Resultado
 
-En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. El cliente requiere la columna y el índice de migración 008 para imports idempotentes. La última lectura SQL anterior los encontró ausentes, pero la reconsulta pública actual de `/ready` devuelve 200; como no expone la versión desplegada ni la comprobación de esquema, el estado actual de 008 queda sin confirmar. La app compila para iOS Simulator; faltan pruebas autenticadas en un iPhone.
+En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. En producción, una consulta directa actual devuelve ausentes la columna e índice de migración 008 (`false/false`), necesarios para imports idempotentes. `/ready` sigue devolviendo 200 porque la versión desplegada aún no hace la comprobación estricta del checkout revisado; los imports nuevos de ShareInbox no pueden completar hasta aplicar 008 y desplegar el backend corregido. La app compila para iOS Simulator; faltan pruebas autenticadas en un iPhone.
 
 ## Cambios hechos en esta revisión
 
