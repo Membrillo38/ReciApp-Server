@@ -22,7 +22,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 - Añadidas pruebas unitarias para la rotación atómica del refresh token y el contador anual de perfil.
 - Añadí cobertura iOS para respuestas HTTP 500/502: conserva el import y permite recuperarlo sin repetir automáticamente el `POST` incierto.
 - ShareInbox guardaba la entrega, pero repetía errores transitorios del extractor cada 2 segundos. Ahora aplica backoff exponencial hasta 60 segundos, respeta `Retry-After` cuando fija un mínimo y limpia el estado al completar o reintentar manualmente. Verificado con 46 pruebas del `ClientStateHarness` y build iOS Simulator.
-- La configuración de producción versionada arrancaba solo FastAPI con `WORKER_ENABLED=false`, así que el procesamiento dependía de `BackgroundTasks` en memoria. Preparé una rama de infraestructura con un servicio `recipe-worker` que reclama trabajos durables de PostgreSQL y activa el modo worker también en el API. Todavía no está desplegada; falta confirmar esquema de producción y hacer rollout controlado.
+- La configuración de producción versionada arrancaba solo FastAPI con `WORKER_ENABLED=false`, así que el procesamiento dependía de `BackgroundTasks` en memoria. Preparé un servicio `recipe-worker` que reclama trabajos durables de PostgreSQL y activa el modo worker también en el API. Está en el commit local `1de66d1` de `codex/reciapp-durable-worker`; el repo de infraestructura no tiene remoto Git configurado, por lo que no pude publicarlo. No está desplegado; falta confirmar esquema y hacer rollout controlado.
 
 ## Contratos comprobados
 
@@ -56,7 +56,7 @@ La app programa una notificación local solo cuando su sondeo detecta que termin
 
 ### Worker de extracción: cambio de infraestructura preparado, no desplegado
 
-La configuración Compose inspeccionada tenía solo `recipe-backend`, sin worker separado; `WORKER_ENABLED` usa `false` por defecto y la inspección remota no encontró contenedor `recipe-worker`. Si el proceso API se reinicia durante una extracción, FastAPI puede perder la tarea en memoria y la fila queda para recuperación posterior. Preparé `recipe-worker` en la rama remota `codex/reciapp-durable-worker`, con el mismo image/env, acceso privado a Postgres y leases. La red `reciapp-internal` permite salida (`internal=false`). `/ready` comprueba la base y el esquema, no que el worker esté vivo; después del rollout también hay que verificar el contenedor y su log de arranque.
+La configuración Compose inspeccionada tenía solo `recipe-backend`, sin worker separado; `WORKER_ENABLED` usa `false` por defecto y la inspección remota no encontró contenedor `recipe-worker`. Si el proceso API se reinicia durante una extracción, FastAPI puede perder la tarea en memoria y la fila queda para recuperación posterior. Preparé `recipe-worker` en el commit local `1de66d1` de `codex/reciapp-durable-worker`, con el mismo image/env, acceso privado a Postgres y leases. El repo de infraestructura no tiene remoto Git configurado, así que el commit sigue local. La red `reciapp-internal` permite salida (`internal=false`). `/ready` comprueba la base y el esquema, no que el worker esté vivo; después del rollout también hay que verificar el contenedor y su log de arranque.
 
 ### Pro en producción: falta una prueba de extremo a extremo
 
@@ -72,7 +72,7 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - No pude consultar issues actuales de Sentry: no hay `SENTRY_AUTH_TOKEN` local configurado. No se leyó ni compartió ningún token.
 - `/health` y `/ready` públicos respondieron HTTP 200 en la última consulta. La respuesta pública de `/ready` no identifica qué build ni qué comprobaciones ejecuta, así que no confirma por sí sola el estado de la migración.
 - No se probó una cuenta autenticada ni una extracción real.
-- Los cambios de API/app están en las ramas remotas `codex/reciapp-server-integration` y `codex/reciapp-ios-integration`; la configuración del worker está preparada en `codex/reciapp-durable-worker`. Ninguno se ha desplegado en producción ni publicado en App Store.
+- Los cambios de API/app están en las ramas remotas `codex/reciapp-server-integration` y `codex/reciapp-ios-integration`; la configuración del worker está en un commit local de `codex/reciapp-durable-worker` porque el repo ops no tiene remoto. Ninguno se ha desplegado en producción ni publicado en App Store.
 
 ## Siguiente orden de aceptación
 
