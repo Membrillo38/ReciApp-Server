@@ -17,7 +17,8 @@ Usa esto como lista de huecos en la app. Lo ya OK se marca.
 - [x] `warmUpBackend()` antes de auth.
 - [x] Poll job / refresh `/v1/me` tras compra.
 - [x] Prod `/health` + `/ready` responden 200 (`environment=production`); el `/ready` desplegado aún no comprueba la migración 008. Ver [auditoría de integración](2026-09-26-app-server-integration-audit.md).
-- [ ] Webhook Superwall VPS: endpoint/source existen, pero entrega real no validada; configuración dashboard contradice un documento que registra `0 active endpoints`. Probar compra/restauración sandbox y confirmar `/v1/me` → `is_pro=true`.
+- [x] Webhook Superwall VPS: consulta de producción del 2026-09-26 encontró 7 eventos recientes, todos procesados (3 Pro-on, 2 Pro-off y 2 cambios de estado). Esto confirma entrega y procesamiento; no sustituye compra/restauración sandbox controlada con `/v1/me` en el mismo dispositivo.
+- [ ] Compra/restauración sandbox: falta probar el ciclo completo en dispositivo y confirmar `/v1/me` → `is_pro=true` para esa cuenta.
 - [x] Server códigos job canónicos (`link_in_bio`, `extraction_retryable`, carousel, etc.).
 - [x] Server emite `SPEND_LIMIT` (403) cuando budget OpenAI se agota.
 
@@ -81,7 +82,7 @@ El servidor ahora devuelve `error_code`; la app muestra el mensaje localizado, o
 
 ### 7. Opcional (no bloquea)
 
-- Renombrar comentarios “weekly limit” → “yearly free cap” en UI/código.
+- Renombrar comentarios y nombres internos heredados de “weekly limit” cuando no sean necesarios para compatibilidad.
 - Analytics: event cuando `SPEND_LIMIT`.
 
 ---

@@ -4,7 +4,7 @@ Backend: extract recipes from TikTok / YouTube / Instagram / Facebook.
 
 - **Cache** by normalized URL (no duplicate OpenAI calls)
 - **Postgres** on the VPS (users, recipes, usage)
-- **Free:** 1 recipe / week
+- **Free:** 3 new recipes per UTC calendar year; cache hits do not consume quota
 - **Pro:** unlimited with fair-use (keep ≥40% margin)
 - **Admin:** `/dashboard` — users, recipes, jobs, usage, Postgres size
 
@@ -12,7 +12,7 @@ Backend: extract recipes from TikTok / YouTube / Instagram / Facebook.
 
 - FastAPI + Docker on the VPS (Coolify)
 - Self-hosted Postgres (`reciapp-postgres`)
-- OpenAI: `gpt-4o-mini` + `gpt-4o-mini-transcribe`
+- OpenAI: `gpt-6-luna` for recipe extraction and vision; `gpt-4o-mini-transcribe` for transcription
 
 ## Docs for iOS
 
