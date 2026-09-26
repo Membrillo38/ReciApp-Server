@@ -46,6 +46,7 @@
 - [x] Extend readiness checks to require all three 009 columns, so an API build using them cannot report ready against a pre-009 schema.
 - [x] Document the 008 then 009 rollout order and rollback behavior.
 - [x] Run the full server suite: 253 passed, 2 skipped.
+- [x] Apply migrations 001–009 to a temporary PostgreSQL cluster and verify concurrent same-ID replay, expiry, closed profiles, logout revocation, legacy one-time rotation, HTTP refresh/logout, and readiness failure when any 009 column is absent. Remove the temporary cluster.
 
 ### Task 2: Persist one request ID across client retries
 
