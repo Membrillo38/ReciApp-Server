@@ -116,6 +116,54 @@ def execute_returning(sql: str, params: Iterable[Any] | dict[str, Any] | None = 
 
 
 async def probe_postgres() -> None:
-    row = await run_in_threadpool(fetch_one, "select 1 as ok")
-    if not row or row.get("ok") != 1:
-        raise ValueError("Invalid readiness response")
+    row = await run_in_threadpool(
+        fetch_one,
+        """
+        select
+          exists (
+            select 1 from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'extract_jobs'
+               and column_name = 'client_delivery_id'
+               and udt_name = 'uuid'
+          ) as delivery_column,
+          exists (
+             select 1
+               from pg_index ix
+               join pg_class idx on idx.oid = ix.indexrelid
+               join pg_class tbl on tbl.oid = ix.indrelid
+               join pg_namespace ns on ns.oid = tbl.relnamespace
+              where ns.nspname = 'public'
+                and tbl.relname = 'extract_jobs'
+                and idx.relname = 'extract_jobs_user_delivery_unique'
+                and ix.indisunique
+                and ix.indisvalid
+                and ix.indisready
+                and ix.indnkeyatts = 2
+                and pg_get_expr(ix.indpred, ix.indrelid) = '(client_delivery_id IS NOT NULL)'
+                and array(
+                    select attr.attname
+                      from unnest(ix.indkey::smallint[]) with ordinality as key(attnum, ord)
+                      join pg_attribute attr
+                        on attr.attrelid = ix.indrelid and attr.attnum = key.attnum
+                     where key.ord <= ix.indnkeyatts
+                     order by key.ord
+                ) = array['user_id', 'client_delivery_id']::name[]
+          ) as delivery_index,
+          (
+            select count(*) = 3
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'auth_refresh_tokens'
+               and column_name = any(array[
+                   'rotation_request_id',
+                   'rotation_retry_until',
+                   'rotated_token_hash'
+               ])
+          ) as refresh_replay_columns
+        """,
+    )
+    if not row or not row.get("delivery_column") or not row.get("delivery_index"):
+        raise ValueError("Required import idempotency schema is missing")
+    if not row.get("refresh_replay_columns"):
+        raise ValueError("Required refresh replay schema is missing")

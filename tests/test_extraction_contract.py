@@ -169,32 +169,22 @@ def test_video_url_skips_carousel_probe_and_leaves_media_to_ytdlp():
 def test_tiktok_html_retries_one_transient_fetch_failure():
     import app.tiktok_slides as slides
 
-    class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def read(self, _limit):
-            return b"<html>ok</html>"
-
     calls = []
-    original_open = slides.safe_urlopen
+    original_open = slides.safe_urlopen_limited
     original_validate = slides.validate_public_url
 
-    def fake_open(request, *, timeout):
+    def fake_open(request, *, timeout, max_bytes):
         calls.append((request.full_url, timeout))
         if len(calls) == 1:
             raise TimeoutError("temporary")
-        return Response()
+        return b"<html>ok</html>"
 
-    slides.safe_urlopen = fake_open
+    slides.safe_urlopen_limited = fake_open
     slides.validate_public_url = lambda *args, **kwargs: None
     try:
         assert slides._fetch_html("https://www.tiktok.com/@cook/photo/1") == "<html>ok</html>"
     finally:
-        slides.safe_urlopen = original_open
+        slides.safe_urlopen_limited = original_open
         slides.validate_public_url = original_validate
 
     assert len(calls) == 2
@@ -203,32 +193,22 @@ def test_tiktok_html_retries_one_transient_fetch_failure():
 def test_tiktok_slide_download_retries_one_transient_fetch_failure():
     import app.tiktok_slides as slides
 
-    class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def read(self, _limit):
-            return b"x" * 500
-
     calls = []
-    original_open = slides.safe_urlopen
+    original_open = slides.safe_urlopen_limited
     original_validate = slides.validate_public_url
 
-    def fake_open(request, *, timeout):
+    def fake_open(request, *, timeout, max_bytes):
         calls.append((request.full_url, timeout))
         if len(calls) == 1:
             raise TimeoutError("temporary")
-        return Response()
+        return b"x" * 500
 
-    slides.safe_urlopen = fake_open
+    slides.safe_urlopen_limited = fake_open
     slides.validate_public_url = lambda *args, **kwargs: None
     try:
         result = slides.download_image_b64("https://cdn.example/slide.jpg")
     finally:
-        slides.safe_urlopen = original_open
+        slides.safe_urlopen_limited = original_open
         slides.validate_public_url = original_validate
 
     assert result
@@ -419,8 +399,8 @@ def test_structured_output_retries_malformed_json():
 
     assert result["title"] == "ok"
     assert len(calls) == 2
-    assert calls[0]["max_tokens"] == 2400
-    assert calls[1]["max_tokens"] == 4000
+    assert calls[0]["max_completion_tokens"] == 2400
+    assert calls[1]["max_completion_tokens"] == 4000
 
 
 def test_structured_output_retries_transient_provider_error():
@@ -495,7 +475,7 @@ def test_pipeline_logs_stage_without_source_payload_logging():
     source = Path("app/pipeline.py").read_text(encoding="utf-8")
     assert 'extract stage=media' in source
     assert 'extract stage=ocr_video_frame' not in source
-    assert 'extract stage=whisper_fallback' in source
+    assert 'extract stage=stt_fallback' in source
     assert 'extract stage=persisted' in source
     assert 'logger.warning("recipe_model attempt=%d error_type=%s"' not in source
     assert 'f"Unexpected error: {exc}"' not in source
@@ -835,17 +815,25 @@ def test_tiktok_video_without_caption_uses_three_bounded_frames(monkeypatch, tmp
     )
 
     def fake_ocr(frame_paths, *, on_attempt):
-        for _ in frame_paths:
+        labels = []
+        for frame_path in frame_paths:
             on_attempt()
             meter = get_cost_meter()
             if meter is not None:
                 meter.add_fallback(settings.cost_ocr_cents_per_slide, kind="ocr")
-        return "Frame 1 ingredients\n\nFrame 2 method\n\nFrame 3 serving"
+            labels.append({
+                "0.jpg": "Frame 1 ingredients",
+                "1.jpg": "Frame 2 method",
+                "2.jpg": "Frame 3 serving",
+            }[frame_path.name])
+        return "\n\n".join(labels)
 
     def fake_build(**kwargs):
         built.append(kwargs)
         slide = kwargs.get("slide_text") or ""
-        if "Frame 3 serving" not in slide:
+        if not all(label in slide for label in (
+            "Frame 1 ingredients", "Frame 2 method", "Frame 3 serving"
+        )):
             return None
         ingredient = Ingredient(name="egg")
         return Recipe(
@@ -934,30 +922,20 @@ def test_tiktok_caption_survives_when_frame_download_fails(monkeypatch):
 
 
 def test_tiktok_short_link_oembed_is_not_skipped():
-    original_open = extract.safe_urlopen
+    original_open = extract.safe_urlopen_limited
     seen = []
 
-    class FakeResponse:
-        def read(self, _n):
-            return json.dumps(
-                {"type": "video", "title": "Tiramisu from a vm link", "author_name": "baker"}
-            ).encode()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-    def fake_open(request, timeout=20):
+    def fake_open(request, *, timeout, max_bytes):
         seen.append(request.full_url)
-        return FakeResponse()
+        return json.dumps(
+            {"type": "video", "title": "Tiramisu from a vm link", "author_name": "baker"}
+        ).encode()
 
-    extract.safe_urlopen = fake_open
+    extract.safe_urlopen_limited = fake_open
     try:
         result = extract._fetch_tiktok_oembed("https://vm.tiktok.com/ZGdQ62tdt/")
     finally:
-        extract.safe_urlopen = original_open
+        extract.safe_urlopen_limited = original_open
     assert result is not None
     assert result.title == "Tiramisu from a vm link"
     assert result.description == "Tiramisu from a vm link"
@@ -966,31 +944,21 @@ def test_tiktok_short_link_oembed_is_not_skipped():
 
 def test_instagram_oembed_fallback_uses_canonical_reel_url():
     original_run = extract._run_ytdlp
-    original_open = extract.safe_urlopen
+    original_open = extract.safe_urlopen_limited
     seen = []
 
-    class FakeResponse:
-        def read(self, _n):
-            return json.dumps(
-                {"title": "Pollo crispy con salsa", "author_name": "connieiscooking"}
-            ).encode()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-    def fake_open(request, timeout=20):
+    def fake_open(request, *, timeout, max_bytes):
         seen.append(request.full_url)
-        return FakeResponse()
+        return json.dumps(
+            {"title": "Pollo crispy con salsa", "author_name": "connieiscooking"}
+        ).encode()
 
     original_validate = extract.validate_public_url
     extract._run_ytdlp = lambda *args, **kwargs: SimpleNamespace(
         returncode=1, stdout="", stderr="login required"
     )
     extract.validate_public_url = lambda *args, **kwargs: None
-    extract.safe_urlopen = fake_open
+    extract.safe_urlopen_limited = fake_open
     try:
         result = extract.fetch_media_info(
             "https://www.instagram.com/reel/Dcq5Bx9NB4-/?stkn=token"
@@ -998,7 +966,7 @@ def test_instagram_oembed_fallback_uses_canonical_reel_url():
     finally:
         extract._run_ytdlp = original_run
         extract.validate_public_url = original_validate
-        extract.safe_urlopen = original_open
+        extract.safe_urlopen_limited = original_open
     assert result.title.startswith("Pollo crispy")
     assert "instagram.com/api/v1/oembed/" in seen[-1]
     assert "Dcq5Bx9NB4-" in seen[-1]
@@ -1511,4 +1479,3 @@ def test_tiktok_play_url_is_used_when_ytdlp_download_fails(tmp_path):
         extract._run_ytdlp = original_ytdlp
         extract.safe_urlopen = original_open
         extract.validate_public_url = original_validate
-

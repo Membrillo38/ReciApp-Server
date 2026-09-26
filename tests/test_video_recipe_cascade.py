@@ -77,7 +77,7 @@ def test_complete_description_skips_stt_and_vision(monkeypatch):
     monkeypatch.setattr(pipeline, "youtube_transcript", lambda url: pytest.fail("should use existing captions"))
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: pytest.fail("no audio when complete"))
     monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: pytest.fail("no local stt"))
-    monkeypatch.setattr(pipeline, "whisper_transcript", lambda *a, **k: pytest.fail("no openai stt"))
+    monkeypatch.setattr(pipeline, "rotate_transcript", lambda *a, **k: pytest.fail("no openai stt"))
     monkeypatch.setattr(pipeline, "download_video_frames", lambda *a, **k: pytest.fail("no vision"))
     monkeypatch.setattr(pipeline, "build_recipe", fake_build)
     monkeypatch.setattr(pipeline, "choose_video_cover_url", lambda *a, **k: None)
@@ -131,16 +131,15 @@ def test_local_stt_success_skips_openai_transcribe_and_vision(monkeypatch, tmp_p
         calls["local"] += 1
         return "whisk three eggs with butter then cook gently"
 
-    def fake_openai(*a, **k):
-        calls["openai"] += 1
-        raise AssertionError("openai stt should not run")
+    def fake_rotate(path, *, local_fn, **kwargs):
+        return local_fn(path), "local"
 
     def fake_frames(*a, **k):
         calls["vision"] += 1
         raise AssertionError("vision should not run")
 
+    monkeypatch.setattr(pipeline, "rotate_transcript", fake_rotate)
     monkeypatch.setattr(pipeline, "local_transcript", fake_local)
-    monkeypatch.setattr(pipeline, "whisper_transcript", fake_openai)
     monkeypatch.setattr(pipeline, "download_video_frames", fake_frames)
     monkeypatch.setattr(pipeline, "build_recipe", fake_build)
     monkeypatch.setattr(pipeline, "choose_video_cover_url", lambda *a, **k: None)
@@ -196,7 +195,7 @@ def test_openai_stt_used_when_local_empty_then_no_vision_if_complete(monkeypatch
         calls["openai"] += 1
         return "crack eggs fold in cream cook low heat"
 
-    monkeypatch.setattr(pipeline, "whisper_transcript", fake_openai)
+    monkeypatch.setattr(pipeline, "rotate_transcript", lambda *a, **k: (fake_openai(), "openai"))
     monkeypatch.setattr(
         pipeline,
         "download_video_frames",
@@ -368,7 +367,7 @@ def test_incomplete_after_all_stages_errors_without_upsert(monkeypatch, tmp_path
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: audio)
     monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: None)
-    monkeypatch.setattr(pipeline, "whisper_transcript", lambda *a, **k: "follow for more")
+    monkeypatch.setattr(pipeline, "rotate_transcript", lambda *a, **k: ("follow for more", "openai"))
     monkeypatch.setattr(
         pipeline,
         "download_video_frames",
@@ -399,7 +398,7 @@ def test_failed_job_records_real_usage(monkeypatch):
     settled = []
     jobs = []
 
-    def fail_ocr(info, *, on_attempt):
+    def fail_ocr(*, image_url, slide_index, on_attempt):
         on_attempt()
         from app.costing import get_cost_meter
 
@@ -410,7 +409,8 @@ def test_failed_job_records_real_usage(monkeypatch):
 
     monkeypatch.setattr(pipeline, "detect_platform", lambda url: Platform.tiktok)
     monkeypatch.setattr(pipeline, "fetch_tiktok_slides", lambda url: slides)
-    monkeypatch.setattr(pipeline, "ocr_slides", fail_ocr)
+    monkeypatch.setattr(pipeline, "ocr_one_slide", fail_ocr)
+    monkeypatch.setattr(pipeline, "build_recipe", lambda **kwargs: None)
     monkeypatch.setattr(pipeline, "update_job", lambda *a, **k: jobs.append(k))
     monkeypatch.setattr(pipeline, "record_usage", lambda **k: usage.append(k))
     monkeypatch.setattr(pipeline, "settle_spend", lambda **k: settled.append(k))
@@ -441,6 +441,6 @@ def test_chat_usage_uses_list_price_not_estimate():
     response = SimpleNamespace(usage=usage)
     with cost_meter_scope() as meter:
         meter.add_chat(response)
-    # $0.15 input + $0.60 output = $0.75 = 75 cents
-    assert meter.cents == 75.0
+    # $0.10 input + $0.50 output = $0.60 = 60 cents
+    assert meter.cents == 60.0
     assert meter.cents != estimate_miss_cost_cents()

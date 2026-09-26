@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID
@@ -11,7 +10,7 @@ from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from app.config import settings
-from app.db import execute, execute_returning, fetch_all, fetch_one
+from app.db import execute, execute_returning, fetch_all, fetch_one, get_conn
 from app.localization import ingredient_section_name, normalize_language
 from app.translation_cache import get_recipe_translations, source_recipe_fingerprint
 from app.models import (
@@ -249,10 +248,10 @@ def save_user_recipe(user_id: UUID, recipe_id: UUID) -> None:
     execute(
         """
         insert into user_recipes (user_id, recipe_id)
-        values (%s, %s)
+        select id, %s from profiles where id = %s and deleted_at is null
         on conflict (user_id, recipe_id) do nothing
         """,
-        (user_id, recipe_id),
+        (recipe_id, user_id),
     )
 
 
@@ -572,20 +571,57 @@ def release_deleted_apple_identity(*, apple_sub: str, email: str | None) -> None
     )
 
 
-def soft_delete_profile(user_id: UUID) -> None:
-    """Close the account but keep apple_sub so delete+recreate cannot reset free quota."""
-    execute(
-        """
-        update profiles
-           set deleted_at = coalesce(deleted_at, %s),
-               email = null,
-               display_name = null,
-               is_pro = false,
-               pro_expires_at = null
-         where id = %s
-        """,
-        (datetime.now(timezone.utc), user_id),
-    )
+def delete_account_data(user_id: UUID) -> None:
+    """Scrub account-owned data and close its sessions atomically."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from user_recipes where user_id = %s", (user_id,))
+            cur.execute(
+                """
+                update extract_jobs
+                   set user_id = null,
+                       status = case when status in ('pending', 'processing') then 'failed' else status end,
+                       progress = case when status in ('pending', 'processing') then 0 else progress end,
+                       lease_until = null,
+                       source_url_raw = '[deleted]',
+                       source_url_norm = '[deleted]:' || id::text,
+                       error = null
+                 where user_id = %s
+                """,
+                (user_id,),
+            )
+            cur.execute(
+                "update api_spend_ledger set user_id = null where user_id = %s",
+                (user_id,),
+            )
+            cur.execute(
+                "update security_events set user_id = null where user_id = %s",
+                (user_id,),
+            )
+            cur.execute(
+                "delete from extract_job_access where user_id = %s",
+                (user_id,),
+            )
+            cur.execute(
+                """
+                update auth_refresh_tokens
+                   set revoked_at = coalesce(revoked_at, now())
+                 where user_id = %s and revoked_at is null
+                """,
+                (user_id,),
+            )
+            cur.execute(
+                """
+                update profiles
+                   set deleted_at = coalesce(deleted_at, now()),
+                       email = null,
+                       display_name = null,
+                       is_pro = false,
+                       pro_expires_at = null
+                 where id = %s
+                """,
+                (user_id,),
+            )
 
 
 def upsert_apple_refresh_token(user_id: UUID, ciphertext: str) -> None:
@@ -626,31 +662,3 @@ def delete_apple_refresh_token(user_id: UUID) -> None:
         """,
         (user_id,),
     )
-
-
-def anonymize_user_data(user_id: UUID) -> None:
-    """Remove personal library/request data. Keep usage_events for free-quota continuity."""
-    try:
-        execute("delete from user_recipes where user_id = %s", (user_id,))
-    except Exception:
-        pass
-    operations = (
-        (
-            "extract_jobs",
-            {
-                "user_id": None,
-                "source_url_raw": "[deleted]",
-                "source_url_norm": "[deleted]",
-                "error": None,
-            },
-        ),
-        ("api_spend_ledger", {"user_id": None}),
-        ("security_events", {"user_id": None}),
-    )
-    for table, fields in operations:
-        try:
-            sql = _update_sql(table, fields, "where user_id = %s", returning="user_id")
-            execute_returning(sql, (*fields.values(), user_id))
-        except Exception:
-            # Keep account deletion compatible during the additive migration rollout.
-            continue

@@ -135,6 +135,7 @@ class JobResponse(BaseModel):
     recipe: RecipePublic | None = None
     recipe_id: UUID | None = None
     error: str | None = None
+    error_code: str | None = None
     progress: int = 0
     # When a shared base extraction finishes in another language, polling can
     # hand the client the newly-created shared translation job.
@@ -161,6 +162,8 @@ class MeResponse(BaseModel):
     is_pro: bool
     pro_expires_at: str | None
     free_used_this_week: int
+    # Kept alongside the legacy field while older iOS builds still decode it.
+    free_used_this_year: int | None = None
     free_limit: int
     free_remaining: int
     pro_remaining_cents: float | None = None
@@ -179,10 +182,12 @@ class AuthAppleRequest(BaseModel):
 
 class AuthRefreshRequest(BaseModel):
     refresh_token: str
+    request_id: UUID | None = None
 
 
 class AuthLogoutRequest(BaseModel):
     refresh_token: str
+    request_id: UUID | None = None
 
 
 class AuthUserResponse(BaseModel):

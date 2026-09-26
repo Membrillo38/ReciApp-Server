@@ -45,9 +45,12 @@ def test_apple_token_invalid_and_nonce_invalid(monkeypatch):
 
 def test_refresh_expired(monkeypatch):
     monkeypatch.setattr(main.settings, "auth_jwt_secret", "test-secret")
-    monkeypatch.setattr(main, "rotate_refresh_token", lambda _: None)
+    monkeypatch.setattr(main, "rotate_refresh_token", lambda _token, _request_id=None: None)
     with __import__("pytest").raises(HTTPException) as caught:
-        main.auth_refresh(_request("/v1/auth/refresh"), type("Body", (), {"refresh_token": "opaque"})())
+        main.auth_refresh(
+            _request("/v1/auth/refresh"),
+            type("Body", (), {"refresh_token": "opaque", "request_id": None})(),
+        )
     assert caught.value.detail["code"] == "REFRESH_TOKEN_EXPIRED"
 
 

@@ -31,7 +31,7 @@ uvicorn app.main:app --reload --port 8000
 
 This repo is the API image (`Dockerfile`). VPS host ops (Traefik, Homepage, Fail2ban, compose) live in sibling `~/Desktop/Server`.
 
-Schema: `psql "$DATABASE_URL" -f migrations/001_init.sql` then `002_row_level_security.sql`, `003_free_yearly_limit.sql`, `004_apple_provider_tokens.sql` and `005_pro_monthly_default.sql`. Health: `/health`. Ready: `/ready`.
+Apply PostgreSQL migrations `001_init.sql` through `008_extract_delivery_idempotency.sql` in order; see [migrations/README.md](migrations/README.md). Health: `/health`. Ready: `/ready` (requires the `008` delivery-idempotency schema in the current source).
 
 For a bounded recipe verification matrix, set `API_KEY` and `AUTH_JWT_SECRET` and run `scripts/e2e_matrix.sh`.
 

@@ -1,10 +1,12 @@
 # Superwall server checklist (ReciApp)
 
-The iOS app is wired. Superwall dashboard already has products, entitlement `pro`, and campaign **Pro** with placements `free_limit_reached` and `settings_upgrade`. The webhook URL points at the **VPS** (not Render).
+The iOS and server source are wired. Live check on 2026-09-26: the webhook secret is present (value not read) and PostgreSQL contains 7 Superwall events received in the last 30 days, all processed and none failed (3 Pro-on, 2 Pro-off, 2 other status changes). This proves recent delivery and handling, but not a controlled sandbox purchase/restore followed by `/v1/me` on the same device. The endpoint URL below targets the VPS (not Render).
 
 You still need App Store products plus a server that maps Superwall events to `profiles.is_pro`. The client never trusts StoreKit for Pro. After purchase it polls `GET /v1/me` until `is_pro` flips.
 
-## Already configured in Superwall
+## Documented Superwall values
+
+The values below come from the last documented dashboard inspection and can drift. Recent server events prove the endpoint is receiving events; check the dashboard before changing configuration.
 
 | Item | Value |
 | --- | --- |
@@ -48,7 +50,7 @@ Local Xcode testing uses `ReciApp/Config/ReciApp.storekit` (scheme ReciApp). Sto
 
 ## App Store Server Notifications
 
-Superwall already generated an ASSN v2 URL for this app. Paste it in App Store Connect → ReciApp → App Information → App Store Server Notifications, **Production and Sandbox**. Copy the URL from Superwall → Settings → Revenue tracking. Without this, Superwall never sees Apple renewals/refunds and the webhook to your server stays empty.
+Superwall generated an ASSN v2 URL for this app in the last documented setup. Recent server events prove delivery is not currently empty, but do not prove Apple Server Notifications are configured for both **Production and Sandbox**. Verify those destinations before relying on renewal/refund updates; the end-to-end device check is still pending.
 
 Optional: App-Specific Shared Secret in Superwall application settings. StoreKit 2 + ASSN v2 is enough for new subs; the shared secret is only for old receipt-verify fallback.
 

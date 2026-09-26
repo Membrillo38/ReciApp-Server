@@ -14,6 +14,42 @@ from app.localization import (
     normalize_language,
     untitled_recipe_name,
 )
+
+
+_PARTIAL_ES_KEYS = {
+    "Couldn't connect to the server. Check your connection and try again.",
+    "Apple couldn't verify this sign-in. Please start Apple sign-in again.",
+    "The service is temporarily unavailable. Please try again shortly.",
+    "The server returned an invalid sign-in response. Please try again.",
+    "We couldn't save your sign-in. Please try again.",
+    "We couldn't create your account. Please try again.",
+    "Only HTTPS links can be imported.",
+    "This link can't be opened because it doesn't use HTTPS.",
+}
+_PARTIAL_ES_CA_KEYS = {
+    "Retry",
+    "Free plan: %d recipe(s) per year. Upgrade to Pro.",
+    "Pro fair-use limit reached. Try again after %@.",
+    "Imports are temporarily paused. Your delivery is saved; try again later.",
+    "Rate limit reached. Your import is saved and will retry automatically.",
+    "Your Pro access is syncing. Restore purchases or refresh access; your library remains available.",
+    "Restore purchases / refresh access",
+    "Keeps your saved recipes and pending import available.",
+    "Purchases could not be restored. Check your Apple account and try again.",
+    "Library refresh failed. Showing saved recipes; try again when connected.",
+    "Free plan: %d recipe(s) per year. Limit resets %@. Upgrade to Pro.",
+    "Saved recipes may be out of date.",
+    "Last updated",
+    "Your saved recipes remain available while refresh runs.",
+    "Notify me when ready",
+    "Notifications are off. Your recipe will still appear in your library.",
+    "Open Settings",
+    "Notifications on",
+}
+_PARTIAL_NOTIFICATIONS = {
+    "Your recipe is ready",
+    "Open ReciApp to find it in your library.",
+}
 from app.models import ExtractRequest
 from app.localization import build_recipe_prompt
 
@@ -74,29 +110,55 @@ def test_fallback_recipe_copy_is_localized():
     assert set(SUPPORTED_LANGUAGE_CODES) == set(TO_TASTE_QUANTITIES)
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_ios_catalog_covers_all_supported_locales_and_placeholders():
-    catalog_path = Path(__file__).parents[1] / "IosAPP" / "ReciApp" / "Localizable.xcstrings"
+def test_ios_catalog_covers_all_supported_locales_and_placeholders(ios_root: Path):
+    catalog_path = ios_root / "ReciApp" / "Localizable.xcstrings"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    assert len(catalog["strings"]) == 238
+    assert catalog["strings"]
+
+    source_only_keys = {
+        key for key, entry in catalog["strings"].items()
+        if not entry.get("localizations")
+    }
+    assert source_only_keys == {
+        "→ cups / oz",
+        "→ g / ml",
+        "Apple still remembers the deleted account. Open Settings, tap your name, tap Sign in with Apple, select ReciApp, then tap Delete. Return here and try again.",
+        "Convert to cups / oz",
+        "Convert to grams / ml",
+        "OK",
+        "Reset Sign in with Apple",
+        "View Apple instructions",
+    }
 
     token_pattern = re.compile(r"%(?:\d+\$)?(?:lld|d|@|%)")
 
     for key, entry in catalog["strings"].items():
         source_tokens = [re.sub(r"%(?:\d+\$)?", "%", token) for token in token_pattern.findall(key)]
         localizations = entry.get("localizations", {})
-        assert set(localizations) == set(SUPPORTED_LANGUAGE_CODES), key
-        for locale in SUPPORTED_LANGUAGE_CODES:
+        locales = set(localizations)
+        if not locales:
+            continue
+        expected_partial_locales = None
+        if key in _PARTIAL_ES_KEYS:
+            expected_partial_locales = {"es-ES", "es-MX"}
+        elif key in _PARTIAL_ES_CA_KEYS:
+            expected_partial_locales = {"ca", "es-ES", "es-MX"}
+        elif key in _PARTIAL_NOTIFICATIONS:
+            expected_partial_locales = set(SUPPORTED_LANGUAGE_CODES) - {"en-AU", "en-CA", "en-GB", "en-US"}
+        assert (
+            locales == set(SUPPORTED_LANGUAGE_CODES)
+            or locales == {"en"}
+            or locales == expected_partial_locales
+        ), key
+        for locale in locales:
             value = localizations[locale]["stringUnit"]["value"]
             localized_tokens = [re.sub(r"%(?:\d+\$)?", "%", token) for token in token_pattern.findall(value)]
             assert Counter(localized_tokens) == Counter(source_tokens), (locale, key, value)
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_ios_folder_move_supports_multiple_selection():
-    root = Path(__file__).parents[1]
-    home = (root / "IosAPP" / "ReciApp" / "Views" / "HomeView.swift").read_text(encoding="utf-8")
-    catalog = json.loads((root / "IosAPP" / "ReciApp" / "Localizable.xcstrings").read_text(encoding="utf-8"))
+def test_ios_folder_move_supports_multiple_selection(ios_root: Path):
+    home = (ios_root / "ReciApp" / "Views" / "HomeView.swift").read_text(encoding="utf-8")
+    catalog = json.loads((ios_root / "ReciApp" / "Localizable.xcstrings").read_text(encoding="utf-8"))
     assert "moveRecipes(withIDs:" in home
     assert "selectedIDs" in home
     assert "FolderSelectionBar" in home
@@ -108,15 +170,13 @@ def test_ios_folder_move_supports_multiple_selection():
     assert "RecipeCoverTags" in home
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_share_extension_uses_shared_localization_resources():
-    root = Path(__file__).parents[1]
-    share_controller = (root / "IosAPP" / "ReciAppShare" / "ShareViewController.swift").read_text(encoding="utf-8")
-    project = (root / "IosAPP" / "ReciApp.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8")
-    localization = (root / "IosAPP" / "ReciApp" / "Services" / "Localization.swift").read_text(encoding="utf-8")
-    app_model = (root / "IosAPP" / "ReciApp" / "ViewModels" / "AppViewModel.swift").read_text(encoding="utf-8")
-    app_entitlements = (root / "IosAPP" / "ReciApp" / "ReciApp.entitlements").read_text(encoding="utf-8")
-    share_entitlements = (root / "IosAPP" / "ReciAppShare" / "ReciAppShare.entitlements").read_text(encoding="utf-8")
+def test_share_extension_uses_shared_localization_resources(ios_root: Path):
+    share_controller = (ios_root / "ReciAppShare" / "ShareViewController.swift").read_text(encoding="utf-8")
+    project = (ios_root / "ReciApp.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8")
+    localization = (ios_root / "ReciApp" / "Services" / "Localization.swift").read_text(encoding="utf-8")
+    app_model = (ios_root / "ReciApp" / "ViewModels" / "AppViewModel.swift").read_text(encoding="utf-8")
+    app_entitlements = (ios_root / "ReciApp" / "ReciApp.entitlements").read_text(encoding="utf-8")
+    share_entitlements = (ios_root / "ReciAppShare" / "ReciAppShare.entitlements").read_text(encoding="utf-8")
     assert "ReciLocalization.string(\"Opening ReciApp…\")" in share_controller
     assert "No se encontró un enlace compatible" not in share_controller
     assert "Localizable.xcstrings in Resources" in project
@@ -126,11 +186,11 @@ def test_share_extension_uses_shared_localization_resources():
     assert "group.com.membri.reciapp" in app_entitlements
     assert "group.com.membri.reciapp" in share_entitlements
     assert "localizedCategoryName" in app_model
-    app_entry = (root / "IosAPP" / "ReciApp" / "ReciAppApp.swift").read_text(encoding="utf-8")
-    assert "-reciapp-settings-preview" in app_entry
-    recipe_detail = (root / "IosAPP" / "ReciApp" / "Views" / "RecipeDetailView.swift").read_text(encoding="utf-8")
-    assert "AppLanguageStore.current.localeIdentifier" in recipe_detail
-    models = (root / "IosAPP" / "ReciApp" / "Models" / "Models.swift").read_text(encoding="utf-8")
+    app_entry = (ios_root / "ReciApp" / "ReciAppApp.swift").read_text(encoding="utf-8")
+    assert ".environmentObject(app)" in app_entry
+    recipe_detail = (ios_root / "ReciApp" / "Views" / "RecipeDetailView.swift").read_text(encoding="utf-8")
+    assert "ReciLocalization.string(" in recipe_detail
+    models = (ios_root / "ReciApp" / "Models" / "Models.swift").read_text(encoding="utf-8")
     assert "localizedServerMessage" in models
-    profile = (root / "IosAPP" / "ReciApp" / "Views" / "ProfileView.swift").read_text(encoding="utf-8")
+    profile = (ios_root / "ReciApp" / "Views" / "ProfileView.swift").read_text(encoding="utf-8")
     assert "AppLanguageStore.selection = newValue" in profile

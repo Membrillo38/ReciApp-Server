@@ -16,16 +16,16 @@ Usa esto como lista de huecos en la app. Lo ya OK se marca.
 - [x] UI fair-use en `PRO_FAIR_USE_LIMIT`.
 - [x] `warmUpBackend()` antes de auth.
 - [x] Poll job / refresh `/v1/me` tras compra.
-- [x] Prod `/health` + `/ready` OK (`environment=production`).
-- [x] Webhook Superwall VPS: `https://51-255-43-100.sslip.io/v1/webhooks/superwall`.
+- [x] Prod `/health` + `/ready` responden 200 (`environment=production`); el `/ready` desplegado aún no comprueba la migración 008. Ver [auditoría de integración](2026-09-26-app-server-integration-audit.md).
+- [ ] Webhook Superwall VPS: endpoint/source existen, pero entrega real no validada; configuración dashboard contradice un documento que registra `0 active endpoints`. Probar compra/restauración sandbox y confirmar `/v1/me` → `is_pro=true`.
 - [x] Server códigos job canónicos (`link_in_bio`, `extraction_retryable`, carousel, etc.).
 - [x] Server emite `SPEND_LIMIT` (403) cuando budget OpenAI se agota.
 
 ---
 
-## Revisar / completar en iOS
+## Estado verificado en la fuente iOS
 
-### 1. `SPEND_LIMIT` (403) — pendiente cliente
+### 1. `SPEND_LIMIT` (403) — implementado; no desplegado
 
 Server puede devolver:
 
@@ -33,23 +33,17 @@ Server puede devolver:
 {"detail":{"code":"SPEND_LIMIT","message":"Usage budget reached.","reason":"…"}}
 ```
 
-Hoy cae en `showForbidden` genérico (`ClientStatePolicy`).
-
-**Hacer:**
-- Tratar `SPEND_LIMIT` como **límite temporal del server**, no paywall.
-- Copy tipo: “Demasiado uso ahora. Prueba en unos minutos.”
-- No abrir Superwall.
-- No borrar la cola de import; permitir retry después.
+La app lo clasifica como `showSpendLimit`, no abre Superwall y conserva el enlace para reintentar. Build local validado; no se ha probado con cuenta real.
 
 Archivo: `ReciApp/Services/ClientStatePolicy.swift` (+ mensaje en `Models.swift` / strings).
 
-### 2. Copy cuota Free
+### 2. Copy cuota Free — implementado en la fuente
 
 Server real: **3 miss / año** (`FREE_YEARLY_LIMIT`; la app aún acepta `FREE_WEEKLY_LIMIT` como alias legacy).
 
-**Hacer:** unificar copy UI + docs a **3 / año**.
+La app muestra **3 / año** y acepta `FREE_WEEKLY_LIMIT` como código heredado. Parte del copy de recuperación aún usa fallback inglés en idiomas sin traducción.
 
-### 3. Errores de job (extract) — pendiente cliente
+### 3. Errores de job (extract) — contrato estructurado implementado
 
 Server guarda mensajes canónicos en inglés (localiza en API cuando aplica):
 
@@ -62,11 +56,7 @@ Server guarda mensajes canónicos en inglés (localiza en API cuando aplica):
 | Video too long… | `video_too_long` |
 | Unsupported URL… | `unsupported_url` |
 
-**Hacer:**
-- Mostrar `job.error` al usuario (no tragarlo en genérico).
-- `extraction_retryable` / “Retry the import” → CTA **Reintentar**, no culpar al enlace.
-- `link_in_bio` → copy claro: la receta está en el bio del creador; no es fallo de la app.
-- Si más adelante el job expone `error_code`, preferir código; hoy suele ser el string.
+El servidor ahora devuelve `error_code`; la app muestra el mensaje localizado, ofrece **Reintentar** para `extraction_retryable`/`stale_job` con un ID nuevo y no reintenta automáticamente los errores permanentes como `link_in_bio`.
 
 ### 4. QA post-cambio server
 
@@ -86,8 +76,8 @@ Server guarda mensajes canónicos en inglés (localiza en API cuando aplica):
 
 ### 6. Docs iOS a sync
 
-- [ ] Strings Localizable: mensajes bio / retry / spend limit.
-- [ ] Copy Free = **3 / año** en UI.
+- [x] Copy Free = **3 / año** en UI.
+- [ ] Traducir todos los mensajes de recuperación en los idiomas restantes; hoy varios usan fallback inglés.
 
 ### 7. Opcional (no bloquea)
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from starlette.requests import Request
 
 import app.main as main
@@ -96,7 +96,7 @@ def test_legacy_recipe_keeps_thumbnail_as_separate_fallback():
     assert recipe.thumbnail_url == "https://cdn.example/cover.jpg"
 
 
-def test_upstream_disconnect_is_a_retryable_503():
+def test_profile_upstream_disconnect_is_a_retryable_client_error():
     request = Request(
         {
             "type": "http",
@@ -125,14 +125,14 @@ def test_upstream_disconnect_is_a_retryable_503():
     assert reset_calls == 0
     assert response.status_code == 503
     assert response.headers["retry-after"] == "1"
-    assert b"Backend temporarily unavailable" in response.body
+    assert b'"code":"AUTH_UPSTREAM_ERROR"' in response.body
+    assert b'"detail":{"code":"AUTH_UPSTREAM_ERROR","message":"Authentication temporarily unavailable"}' in response.body
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_job_polling_sends_language_and_client_handles_handoff():
-    source = Path("IosAPP/ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
-    models = Path("IosAPP/ReciApp/Models/Models.swift").read_text(encoding="utf-8")
-    policy = Path("IosAPP/ReciApp/Services/ClientStatePolicy.swift").read_text(encoding="utf-8")
+def test_job_polling_sends_language_and_client_handles_handoff(ios_root: Path):
+    source = (ios_root / "ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
+    models = (ios_root / "ReciApp/Models/Models.swift").read_text(encoding="utf-8")
+    policy = (ios_root / "ReciApp/Services/ClientStatePolicy.swift").read_text(encoding="utf-8")
     assert "func job(id: UUID, language: String)" in source
     assert 'URLQueryItem(name: "language", value: language)' in source
     assert "func myJobs()" in source
@@ -144,7 +144,52 @@ def test_job_polling_sends_language_and_client_handles_handoff():
     assert "func waitForRecipe(" in source
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
+def test_swift_models_match_server_retry_and_idempotency_fields(ios_root: Path):
+    client_models = (ios_root / "ReciApp/Models/Models.swift").read_text(encoding="utf-8")
+    server_models = Path("app/models.py").read_text(encoding="utf-8")
+    assert "let freeUsedThisYear: Int?" in client_models
+    assert "free_used_this_year: int | None = None" in server_models
+    assert "let clientDeliveryId: UUID?" in client_models
+    assert "client_delivery_id: UUID | None = None" in server_models
+    assert "let errorCode: String?" in client_models
+    assert "error_code: str | None = None" in server_models
+
+
+def test_share_delivery_is_acknowledged_only_after_job_is_persisted(ios_root: Path):
+    source = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    submit = source.split("private func submitShareInbox(language:", 1)[1].split(
+        "private func submitShareInboxAndFollow", 1
+    )[0]
+    accepted = submit.index("let started = try await api.extract")
+    persisted = submit.index("ImportJobStore.save(", accepted)
+    acknowledged = submit.index("markShareDeliveryProcessed(delivery.id", accepted)
+    assert persisted < acknowledged
+
+
+def test_account_deletion_purges_user_shopping_list(ios_root: Path):
+    view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    store = (ios_root / "ReciApp/Services/ShoppingListStore.swift").read_text(encoding="utf-8")
+    purge = view_model.split("private func purgeLocalUserDiskCaches", 1)[1].split(
+        "private func persistRecipeCache", 1
+    )[0]
+    assert "ShoppingListStore.clear(for: userID.uuidString)" in purge
+    assert "removeObject(forKey: key(for: userID))" in store
+
+
+def test_account_deletion_clears_only_that_users_pending_shares(ios_root: Path):
+    view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    share_inbox = (ios_root / "ReciApp/Services/ShareInbox.swift").read_text(encoding="utf-8")
+    purge = view_model.split("private func purgeLocalUserDiskCaches", 1)[1].split(
+        "private func persistRecipeCache", 1
+    )[0]
+    clear = share_inbox.split("static func clear(userID:", 1)[1].split(
+        "static func markProcessed", 1
+    )[0]
+    assert "ShareInbox.clear(userID: userID)" in purge
+    assert "$0.ownerUserID == userID" in clear
+    assert "$0.ownerUserID != userID" in clear
+
+
 @pytest.mark.skip(reason="Replaced by runnable ClientStateHarness behavioral tests")
 def test_ios_recipe_refresh_is_cached_coalesced_and_not_blocked_by_profile():
     view_model = Path("IosAPP/ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
@@ -163,24 +208,21 @@ def test_ios_recipe_refresh_is_cached_coalesced_and_not_blocked_by_profile():
     assert 'http.value(forHTTPHeaderField: "X-Correlation-ID")' in api
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_ios_polling_covers_backend_media_timeout_with_margin():
-    source = Path("IosAPP/ReciApp/Config/AppConfig.swift").read_text(encoding="utf-8")
+def test_ios_polling_covers_backend_media_timeout_with_margin(ios_root: Path):
+    source = (ios_root / "ReciApp/Config/AppConfig.swift").read_text(encoding="utf-8")
     assert "static let maxPollAttempts = 330" in source
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_ios_warms_backend_before_authenticated_requests():
-    client = Path("IosAPP/ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
-    view_model = Path("IosAPP/ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
-    app = Path("IosAPP/ReciApp/ReciAppApp.swift").read_text(encoding="utf-8")
+def test_ios_warms_backend_before_authenticated_requests(ios_root: Path):
+    client = (ios_root / "ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
+    view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    app = (ios_root / "ReciApp/ReciAppApp.swift").read_text(encoding="utf-8")
     assert 'appending(path: "health")' in client or 'appendingPathComponent("/health")' in client
     assert "warmUpBackend()" in client
     assert "func warmUpBackend() async" in view_model
     assert "await app.warmUpBackend()" in app
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
 @pytest.mark.skip(reason="Replaced by runnable ClientStateHarness behavioral tests")
 def test_refresh_coalesces_responses_and_subscription_poll_does_not_reload_recipes():
     view_model = Path("IosAPP/ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
@@ -201,7 +243,7 @@ def test_job_status_reuses_initial_row_for_access_check():
     assert "row: dict | None = None" in store
 
 
-def test_completed_job_returns_recipe_when_attachment_write_fails():
+def test_completed_job_returns_retryable_error_when_attachment_write_fails():
     job_id = uuid4()
     recipe_id = uuid4()
     user = AuthUser(uuid4(), None, None, False, None)
@@ -242,7 +284,8 @@ def test_completed_job_returns_recipe_when_attachment_write_fails():
     )
     main.localized_recipe_row = lambda recipe, _language: recipe
     try:
-        result = main.get_job_status(job_id, object(), "en-US", user)
+        with pytest.raises(HTTPException) as caught:
+            main.get_job_status(job_id, object(), "en-US", user)
     finally:
         main.get_job = replacements["get_job"]
         main.user_can_access_job = replacements["user_can_access_job"]
@@ -251,8 +294,9 @@ def test_completed_job_returns_recipe_when_attachment_write_fails():
         main.save_user_recipe = replacements["save_user_recipe"]
         main.localized_recipe_row = replacements["localized_recipe_row"]
 
-    assert result.recipe is not None
-    assert result.recipe.title == "Recovered recipe"
+    assert caught.value.status_code == 503
+    assert caught.value.headers["Retry-After"] == "1"
+    assert caught.value.detail["code"] == "RECIPE_ATTACH_UNAVAILABLE"
 
 
 def test_translation_jobs_have_language_scoped_concurrency_index():
@@ -328,11 +372,19 @@ def test_reserve_api_spend_qualifies_ledger_reserved_cents():
     assert migration.count("then ledger.reserved_cents else ledger.actual_cents") == 3
 
 
-def test_account_anonymization_removes_job_identity_and_source():
+def test_account_deletion_atomically_anonymizes_job_identity_and_source():
     source = Path("app/store.py").read_text(encoding="utf-8")
-    assert '"user_id": None' in source
-    assert '"source_url_raw": "[deleted]"' in source
-    assert '"source_url_norm": "[deleted]"' in source
+    cleanup = source.split("def delete_account_data", 1)[1].split("def upsert_apple_refresh_token", 1)[0]
+    assert "with get_conn() as conn" in cleanup
+    assert "delete from user_recipes" in cleanup
+    assert "user_id = null" in cleanup
+    assert "source_url_raw = '[deleted]'" in cleanup
+    assert "source_url_norm = '[deleted]:' || id::text" in cleanup
+    assert "status = case when status in ('pending', 'processing') then 'failed'" in cleanup
+    assert "lease_until = null" in cleanup
+    assert "delete from extract_job_access" in cleanup
+    assert "update auth_refresh_tokens" in cleanup
+    assert "update profiles" in cleanup
 
 
 def test_superwall_processing_errors_are_stored_without_exception_payload():
@@ -409,7 +461,7 @@ def test_worker_mode_does_not_schedule_a_second_request_local_job():
     assert background.tasks == []
 
 
-def test_cached_recipe_does_not_require_openai_key():
+def test_cached_recipe_attachment_failure_returns_retryable_error():
     user = AuthUser(uuid4(), None, None, False, None)
     cached = {
         "id": str(uuid4()),
@@ -455,12 +507,13 @@ def test_cached_recipe_does_not_require_openai_key():
     )
     main.record_usage = lambda *args, **kwargs: None
     try:
-        response = main.extract_recipe(
-            request,
-            main.ExtractRequest(url=cached["source_url_raw"], language="en-US"),
-            Background(),
-            user,
-        )
+        with pytest.raises(HTTPException) as caught:
+            main.extract_recipe(
+                request,
+                main.ExtractRequest(url=cached["source_url_raw"], language="en-US"),
+                Background(),
+                user,
+            )
     finally:
         main.settings.openai_api_key = replacements["openai_api_key"]
         main.get_recipe_by_norm = replacements["get_recipe_by_norm"]
@@ -472,8 +525,86 @@ def test_cached_recipe_does_not_require_openai_key():
         main.save_user_recipe = replacements["save_user_recipe"]
         main.record_usage = replacements["record_usage"]
 
+    assert caught.value.status_code == 503
+    assert caught.value.headers["Retry-After"] == "1"
+    assert caught.value.detail["code"] == "RECIPE_ATTACH_UNAVAILABLE"
+
+
+def test_cached_delivery_replay_repairs_missing_user_recipe_link(monkeypatch):
+    user = AuthUser(uuid4(), None, None, False, None)
+    delivery_id = uuid4()
+    job_id = uuid4()
+    recipe_id = uuid4()
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/v1/extract",
+        "headers": [],
+        "query_string": b"",
+        "scheme": "https",
+        "client": ("127.0.0.1", 1234),
+        "server": ("localhost", 8000),
+    })
+
+    class Background:
+        def add_task(self, *args, **kwargs):
+            raise AssertionError("delivery replay must not schedule extraction")
+
+    attached = []
+    monkeypatch.setattr(main, "validate_public_url", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "normalize_url", lambda _url: "youtube:cached")
+    monkeypatch.setattr(
+        main,
+        "get_job_by_delivery_id",
+        lambda *_args: {
+            "id": job_id,
+            "status": JobStatus.completed.value,
+            "cache_hit": True,
+            "recipe_id": recipe_id,
+            "source_url_norm": "youtube:cached",
+            "language_code": "en-US",
+            "progress": 100,
+        },
+    )
+    monkeypatch.setattr(main, "save_user_recipe", lambda uid, rid: attached.append((uid, rid)))
+
+    response = main.extract_recipe(
+        request,
+        main.ExtractRequest(
+            url="https://www.youtube.com/watch?v=cached",
+            language="en-US",
+            client_delivery_id=delivery_id,
+        ),
+        Background(),
+        user,
+    )
+
+    assert response.job_id == job_id
     assert response.cache_hit is True
-    assert response.status == JobStatus.completed
+    assert attached == [(user.id, recipe_id)]
+
+
+def test_failed_job_response_includes_stable_error_code(monkeypatch):
+    user = AuthUser(uuid4(), None, None, False, None)
+    job_id = uuid4()
+    monkeypatch.setattr(main, "require_writes_enabled", lambda: None)
+    monkeypatch.setattr(
+        main,
+        "get_job",
+        lambda _job_id: {
+            "id": job_id,
+            "user_id": user.id,
+            "status": JobStatus.failed.value,
+            "error": "Extraction temporarily failed. Retry the import.",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    monkeypatch.setattr(main, "user_can_access_job", lambda **_kwargs: True)
+
+    response = main.get_job_status(job_id, BackgroundTasks(), "es-ES", user)
+
+    assert response.error_code == "extraction_retryable"
+    assert response.error
 
 
 def test_cached_recipe_without_translation_does_not_create_job_without_openai_key():
@@ -593,9 +724,9 @@ def test_e2e_matrix_is_bounded_and_does_not_echo_secret_payloads():
     assert "echo \"$TOKEN\"" not in source
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_ios_auth_emits_local_session_without_accepting_an_expired_initial_session():
-    auth = Path("IosAPP/ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
-    assert "emitLocalSessionAsInitialSession: true" in auth
-    assert "event == .initialSession, newSession?.isExpired == true" in auth
-    assert "ignored expired initial session" in auth
+def test_ios_auth_uses_backend_token_endpoints_and_secure_session_storage(ios_root: Path):
+    auth = (ios_root / "ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
+    assert 'post("v1/auth/apple", body: payload)' in auth
+    assert '"v1/auth/refresh"' in auth
+    assert '"com.membri.reciapp.auth"' in auth
+    assert "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" in auth

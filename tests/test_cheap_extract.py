@@ -445,7 +445,7 @@ def test_recipe_model_stops_after_rate_limit(monkeypatch):
 
     class FakeCompletions:
         def create(self, **kwargs):
-            calls.append(kwargs.get("max_tokens"))
+            calls.append(kwargs.get("max_completion_tokens"))
             raise RateLimitError("slow down")
 
     class FakeClient:

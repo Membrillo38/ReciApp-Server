@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from uuid import uuid4
 
 import pytest
@@ -5,51 +6,93 @@ from fastapi import HTTPException
 
 from app import store
 from app.auth import ACCOUNT_DELETED, ACCOUNT_UNAVAILABLE, AuthUser, current_user, current_user_allow_closed
-from app.auth_tokens import revoke_all_refresh_tokens
 from app.main import admin_delete_user, delete_me, revoke_stored_apple_authorization
 import app.main as main
 
 
-def test_soft_delete_keeps_apple_sub_for_quota(monkeypatch):
-    captured = {}
-
-    def fake_execute(sql, params=None):
-        captured["sql"] = " ".join(sql.split())
-        captured["params"] = params
-        return 1
-
-    monkeypatch.setattr(store, "execute", fake_execute)
-    store.soft_delete_profile(uuid4())
-    assert "apple_sub = null" not in captured["sql"]
-    assert "email = null" in captured["sql"]
-    assert "is_pro = false" in captured["sql"]
-    assert "deleted_at = coalesce(deleted_at, %s)" in captured["sql"]
-
-
-def test_anonymize_deletes_user_library_but_keeps_usage(monkeypatch):
+def test_account_data_deletion_is_atomic_and_keeps_usage_history(monkeypatch):
     sqls = []
+    exits = []
 
-    def fake_execute(sql, params=None):
-        sqls.append(" ".join(sql.split()))
-        return 1
+    class Cursor:
+        def __enter__(self):
+            return self
 
-    monkeypatch.setattr(store, "execute", fake_execute)
-    monkeypatch.setattr(store, "execute_returning", lambda *args, **kwargs: {"user_id": None})
-    store.anonymize_user_data(uuid4())
-    assert any("delete from user_recipes" in sql for sql in sqls)
-    assert not any("usage_events" in sql for sql in sqls)
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, sql, params=None):
+            sqls.append((" ".join(sql.split()), params))
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def fake_get_conn():
+        try:
+            yield Connection()
+        except Exception as exc:
+            exits.append(exc)
+            raise
+
+    monkeypatch.setattr(store, "get_conn", fake_get_conn)
+    store.delete_account_data(uuid4())
+    normalized = [sql for sql, _params in sqls]
+    assert any(sql.startswith("delete from user_recipes") for sql in normalized)
+    assert any(sql.startswith("update extract_jobs") for sql in normalized)
+    assert any(sql.startswith("delete from extract_job_access") for sql in normalized)
+    assert any(sql.startswith("update auth_refresh_tokens") for sql in normalized)
+    assert any(sql.startswith("update profiles") for sql in normalized)
+    assert not any("usage_events" in sql for sql in normalized)
+    assert len(exits) == 0
 
 
-def test_delete_me_revokes_apple_then_tokens_then_soft_delete():
+def test_account_data_deletion_propagates_database_failure(monkeypatch):
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args):
+            raise RuntimeError("database unavailable")
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def fake_get_conn():
+        yield Connection()
+
+    monkeypatch.setattr(store, "get_conn", fake_get_conn)
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        store.delete_account_data(uuid4())
+
+
+def test_recipe_completion_cannot_reattach_to_deleted_profile(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        store,
+        "execute",
+        lambda sql, params=None: captured.update(sql=" ".join(sql.split()), params=params),
+    )
+    user_id, recipe_id = uuid4(), uuid4()
+    store.save_user_recipe(user_id, recipe_id)
+    assert "select id, %s from profiles where id = %s and deleted_at is null" in captured["sql"]
+    assert captured["params"] == (recipe_id, user_id)
+
+
+def test_delete_me_revokes_apple_then_runs_atomic_database_cleanup():
     source = open("app/main.py", encoding="utf-8").read()
     purge = source.split("def _purge_account", 1)[1].split("def auth_apple", 1)[0]
-    assert purge.index("revoke_stored_apple_authorization") < purge.index("anonymize_user_data")
-    assert purge.index("anonymize_user_data") < purge.index("revoke_all_refresh_tokens")
-    assert purge.index("revoke_all_refresh_tokens") < purge.index("soft_delete_profile")
+    assert purge.index("revoke_stored_apple_authorization") < purge.index("delete_account_data")
     delete_body = source.split("def delete_me", 1)[1].split("def extract_recipe", 1)[0]
     assert "current_user_allow_closed" in delete_body
     assert "_purge_account" in source.split("def admin_delete_user", 1)[1].split("def admin_list_recipes", 1)[0]
-    assert callable(delete_me) and callable(admin_delete_user) and callable(revoke_all_refresh_tokens)
+    assert callable(delete_me) and callable(admin_delete_user) and callable(store.delete_account_data)
 
 
 def test_auth_apple_reactivates_closed_profile_for_same_apple_sub():
@@ -66,13 +109,22 @@ def test_auth_apple_reactivates_closed_profile_for_same_apple_sub():
 def test_delete_me_is_idempotent(monkeypatch):
     calls = []
     monkeypatch.setattr(main, "revoke_stored_apple_authorization", lambda uid: calls.append("apple"))
-    monkeypatch.setattr(main, "anonymize_user_data", lambda uid: calls.append("anon"))
-    monkeypatch.setattr(main, "revoke_all_refresh_tokens", lambda uid: calls.append("tokens"))
-    monkeypatch.setattr(main, "soft_delete_profile", lambda uid: calls.append("soft"))
+    monkeypatch.setattr(main, "delete_account_data", lambda uid: calls.append("db"))
     user = AuthUser(id=uuid4(), email=None, display_name=None, is_pro=False, pro_expires_at=None)
     assert delete_me(user).ok is True
     assert delete_me(user).ok is True
-    assert calls == ["apple", "anon", "tokens", "soft", "apple", "anon", "tokens", "soft"]
+    assert calls == ["apple", "db", "apple", "db"]
+
+
+def test_account_deletion_database_failure_is_retryable(monkeypatch):
+    monkeypatch.setattr(main, "revoke_stored_apple_authorization", lambda _uid: None)
+    monkeypatch.setattr(main, "delete_account_data", lambda _uid: (_ for _ in ()).throw(RuntimeError("db")))
+    user = AuthUser(id=uuid4(), email=None, display_name=None, is_pro=False, pro_expires_at=None)
+    with pytest.raises(HTTPException) as caught:
+        delete_me(user)
+    assert caught.value.status_code == 503
+    assert caught.value.headers["Retry-After"] == "3"
+    assert caught.value.detail["code"] == "ACCOUNT_DELETION_UNAVAILABLE"
 
 
 def test_revoke_stored_apple_token_deletes_only_after_success(monkeypatch):

@@ -2,17 +2,13 @@ import pytest
 from pathlib import Path
 
 
-@pytest.mark.skipif(not Path("IosAPP/ReciApp").is_dir(), reason="Ignored iOS sources unavailable in backend-only checkout")
-def test_superwall_is_configured_and_identified_with_app_user():
-    service = Path("IosAPP/ReciApp/Services/SubscriptionService.swift").read_text(encoding="utf-8")
-    auth = Path("IosAPP/ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
-    assert "Superwall.configure(apiKey: AppConfig.superwallPublicKey)" in service
+def test_superwall_is_configured_and_identified_with_app_user(ios_root: Path):
+    service = (ios_root / "ReciApp/Services/SubscriptionService.swift").read_text(encoding="utf-8")
+    auth = (ios_root / "ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
+    assert "apiKey: AppConfig.superwallPublicKey" in service
     assert "Superwall.shared.identify(userId: value)" in service
-    # Prefer `user_id`; older builds may still send legacy `supabase_user_id`.
-    assert (
-        'setUserAttributes(["user_id": value])' in service
-        or 'setUserAttributes(["supabase_user_id": value])' in service
-    )
+    assert 'attributes["user_id"] = identifiedUserID' in service
+    assert "Superwall.shared.setUserAttributes(attributes)" in service
     assert "func restorePurchases" in service
     assert "SubscriptionService.shared.identify" in auth
 
