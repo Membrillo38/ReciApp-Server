@@ -31,7 +31,7 @@ uvicorn app.main:app --reload --port 8000
 
 This repo is the API image (`Dockerfile`). VPS host ops (Traefik, Homepage, Fail2ban, compose) live in sibling `~/Desktop/Server`.
 
-Apply PostgreSQL migrations `001_init.sql` through `008_extract_delivery_idempotency.sql` in order; see [migrations/README.md](migrations/README.md). Health: `/health`. Ready: `/ready` (requires the `008` delivery-idempotency schema in the current source).
+Apply PostgreSQL migrations `001_init.sql` through `009_refresh_rotation_replay.sql` in order; see [migrations/README.md](migrations/README.md). Health: `/health`. Ready: `/ready` requires the delivery-idempotency schema from `008` and refresh-replay columns from `009`.
 
 For a bounded recipe verification matrix, set `API_KEY` and `AUTH_JWT_SECRET` and run `scripts/e2e_matrix.sh`.
 
@@ -39,7 +39,7 @@ For a bounded recipe verification matrix, set `API_KEY` and `AUTH_JWT_SECRET` an
 
 | Plan | Limit |
 |------|-------|
-| Free | 1 import / week (UTC) |
+| Free | 3 new recipes / UTC calendar year; cache hits do not consume quota |
 | Pro | Cache misses until monthly cost ≥ budget (`profiles.pro_monthly_price_cents × (1 - margin)`). Webhook monthlyizes weekly×52/12 and yearly÷12 into that field. Defaults in `app_settings`. |
 
 ## Verification

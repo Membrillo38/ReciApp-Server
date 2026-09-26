@@ -31,12 +31,12 @@ let body: [String: String] = [
     "identity_token": appleIDToken,
     "nonce": rawNonce,
     "full_name": fullName,
-    "authorization_code": authorizationCode // opcional hasta que este backend esté desplegado
+    "authorization_code": authorizationCode // opcional; omítelo si servidor/Apple no están configurados
 ]
 // Envía body a POST /v1/auth/apple y guarda la sesión devuelta en Keychain.
 ```
 
-`POST /v1/auth/apple` acepta `authorization_code` opcional además de `identity_token`, `nonce` y `full_name`. No envíes el code hasta que el backend que lo acepta esté en producción: una validación estricta anterior podría romper el login. Después del deploy, envía `ASAuthorizationAppleIDCredential.authorizationCode` para que el servidor intercambie y guarde cifrado el refresh token de Apple. El login sigue siendo válido si el code falta o el intercambio falla.
+El source actual de `POST /v1/auth/apple` acepta `authorization_code` opcional además de `identity_token`, `nonce` y `full_name`. Antes de publicar el cliente, confirma que producción tenga ese backend; si no, omite el campo. Con el backend y la configuración Apple listos, envía `ASAuthorizationAppleIDCredential.authorizationCode` para que servidor intercambie y guarde cifrado el refresh token de Apple. El login sigue siendo válido si el code falta o el intercambio falla.
 
 `POST /v1/auth/apple` devuelve `access_token`, `refresh_token`, `token_type`, `expires_in` y `user`. Renueva con `POST /v1/auth/refresh`; cierra con `POST /v1/auth/logout` de forma best-effort y borra Keychain siempre. No registres tokens, contraseñas ni cuerpos de respuestas privadas.
 
@@ -86,9 +86,11 @@ El servidor acepta URLs públicas de TikTok, YouTube, Instagram y Facebook. Desc
 - Una receta fallida puede aparecer en el payload de una traducción: comprueba primero `status`, después `recipe`.
 - Pegar o compartir **varios enlaces** debe encolar todos (cap 20). No marques un share como procesado hasta que `POST /v1/extract` cree el job (o cache hit).
 - **Dedupe local:** antes de `POST /v1/extract`, si esa URL (normalizada) ya está en la biblioteca del usuario, no reenvíes salvo “reimportar”. Cache hit en servidor es barato pero aún crea job; skip local evita round-trip y ruido.
-- Free plan: el 4.º miss nuevo del año civil (UTC) puede devolver 403 `FREE_WEEKLY_LIMIT` (paywall; tope 3 recetas/año); los jobs ya aceptados siguen. Cache hit no gasta cupo.
+- Free plan: permite 3 misses nuevos por año civil UTC; el 4.º puede devolver 403 `FREE_YEARLY_LIMIT` (paywall). `FREE_WEEKLY_LIMIT` solo se acepta como alias heredado. Los jobs ya aceptados siguen; cache hit no gasta cupo.
 
-Con `WORKER_ENABLED=true` el proceso web solo admite HTTP/poll; un contenedor `reciapp-worker` (`docker-compose.worker.yml`) ejecuta extracts. No actives el flag en Coolify sin worker en marcha (jobs quedarían `pending`).
+Antes de desplegar el cliente actual, aplica `migrations/008_extract_delivery_idempotency.sql` y `migrations/009_refresh_rotation_replay.sql`; la API actual requiere ambas para readiness e idempotencia de imports/refresh. Confirma `/ready` tras aplicar esquema.
+
+Con `WORKER_ENABLED=true` el proceso web solo admite HTTP/poll; el servicio worker de `docker-compose.worker.yml` ejecuta extracts. No actives el flag en Coolify sin worker en marcha (jobs quedarían `pending`).
 
 ## 5. Errores y suscripciones
 
@@ -97,7 +99,7 @@ La propiedad JSON `detail` puede ser texto, un objeto con `code` y `message`, o 
 | Estado/código | Comportamiento en la app |
 | --- | --- |
 | 401 | Renovar sesión una vez; después solicitar login. |
-| 403 `FREE_WEEKLY_LIMIT` | Presentar paywall. |
+| 403 `FREE_YEARLY_LIMIT` | Presentar paywall. Aceptar `FREE_WEEKLY_LIMIT` como alias heredado. |
 | 403 `PRO_FAIR_USE_LIMIT` | Mostrar límite temporal de uso. |
 | 403 `ACCOUNT_DELETED` | Cuenta cerrada. Cerrar sesión, borrar cachés y mostrar login. No reutilizar el JWT. |
 | 403 `ACCOUNT_UNAVAILABLE` | Perfil ausente o no usable. Cerrar sesión y volver a Sign in with Apple. |
