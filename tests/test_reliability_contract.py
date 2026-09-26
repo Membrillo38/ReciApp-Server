@@ -230,10 +230,15 @@ def test_share_delivery_is_acknowledged_only_after_job_is_persisted(ios_root: Pa
 def test_account_deletion_purges_user_shopping_list(ios_root: Path):
     view_model = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
     store = (ios_root / "ReciApp/Services/ShoppingListStore.swift").read_text(encoding="utf-8")
+    progress_store = (ios_root / "ReciApp/Models/UserPreferences.swift").read_text(encoding="utf-8")
+    recipe_detail = (ios_root / "ReciApp/Views/RecipeDetailView.swift").read_text(encoding="utf-8")
     purge = view_model.split("private func purgeLocalUserDiskCaches", 1)[1].split(
         "private func persistRecipeCache", 1
     )[0]
     assert "ShoppingListStore.clear(for: userID.uuidString)" in purge
+    assert "CookingProgressStore.clear(userID: userID)" in purge
+    assert "CookingProgressKeyPolicy.storageKey(userID: userID, recipeID: recipeID)" in progress_store
+    assert "CookingProgressStore.load(for: recipe.id, userID: userID)" in recipe_detail
     assert "removeObject(forKey: key(for: userID))" in store
 
 
