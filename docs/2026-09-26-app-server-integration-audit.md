@@ -47,6 +47,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 Observaciones de solo lectura en producción, 2026-09-26:
 
 - Reconsulta pública actual: `/health` HTTP 200 (`status=ok`) y `/ready` HTTP 200 (`status=ready`, `environment=production`, `maintenance=false`, latencia 2 ms). La respuesta no informa versión ni qué esquema valida.
+- Confirmé que `/openapi.json` y `/docs` devuelven 404 en producción; FastAPI desactiva la documentación en ese entorno. No se puede comparar el contrato publicado desde OpenAPI, así que la evidencia del despliegue queda limitada a probes, introspección SQL y requests agregadas.
 - En la inspección anterior, la API desplegada aceptaba `client_delivery_id` y `OPENAI_API_KEY` estaba configurada; no revalidé esas dos condiciones en el probe actual.
 - La introspección PostgreSQL directa de esta reconsulta devolvió `false/false`: siguen ausentes `extract_jobs.client_delivery_id` y `extract_jobs_user_delivery_unique`.
 - Conteo de la ventana reciente de 24 h: 965 registros; no aparecen marcadores `request completed`, etapas/fallos de extracción, errores upstream, rate limits ni líneas `ERROR`/`WARNING`. Al faltar marcadores de request, los logs no permiten estimar tráfico ni tasas 4xx/5xx; cero coincidencias no prueba que no hubiera solicitudes.
