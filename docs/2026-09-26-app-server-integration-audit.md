@@ -84,6 +84,7 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - `/health` y `/ready` públicos respondieron HTTP 200 en la revalidación de hoy. La respuesta pública de `/ready` no identifica qué build ni qué comprobaciones ejecuta, así que no confirma por sí sola el estado de las migraciones 008/009.
 - No se probó Apple login ni una extracción real en dispositivo; tampoco la compra/restauración sandbox de extremo a extremo, aunque sí hay webhooks Superwall procesados en producción.
 - Los cambios de API/app están en las ramas remotas `codex/reciapp-server-integration` y `codex/reciapp-ios-integration`; la configuración del worker está en un commit local de `codex/reciapp-durable-worker` porque el repo ops no tiene remoto. Ninguno se ha desplegado en producción ni publicado en App Store.
+- Los PR de API e iOS siguen abiertos en borrador y marcados como mergeables; GitHub no devuelve checks de CI para sus commits actuales. Sus descripciones aún indican 246 pruebas de servidor y 46 del harness iOS, frente a los resultados revalidados de 253 y 47.
 
 ## Siguiente orden de aceptación
 
