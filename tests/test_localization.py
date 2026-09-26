@@ -1,8 +1,9 @@
-import pytest
 import json
 import re
 from collections import Counter
 from pathlib import Path
+
+import pytest
 
 from app.localization import (
     INGREDIENT_SECTION_NAMES,
@@ -41,14 +42,14 @@ _PARTIAL_ES_CA_KEYS = {
     "Saved recipes may be out of date.",
     "Last updated",
     "Your saved recipes remain available while refresh runs.",
-    "Notify me when ready",
-    "Notifications are off. Your recipe will still appear in your library.",
-    "Open Settings",
-    "Notifications on",
 }
 _PARTIAL_NOTIFICATIONS = {
     "Your recipe is ready",
     "Open ReciApp to find it in your library.",
+    "Notify me when ready",
+    "Notifications are off. Your recipe will still appear in your library.",
+    "Open Settings",
+    "Notifications on",
 }
 from app.models import ExtractRequest
 from app.localization import build_recipe_prompt

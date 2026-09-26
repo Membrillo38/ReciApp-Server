@@ -1,10 +1,11 @@
-import pytest
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
+import pytest
 from fastapi import BackgroundTasks, HTTPException
 from starlette.requests import Request
 
@@ -153,6 +154,21 @@ def test_swift_models_match_server_retry_and_idempotency_fields(ios_root: Path):
     assert "client_delivery_id: UUID | None = None" in server_models
     assert "let errorCode: String?" in client_models
     assert "error_code: str | None = None" in server_models
+
+
+def test_import_notification_controls_cover_every_ready_notification_locale(ios_root: Path):
+    catalog = json.loads(
+        (ios_root / "ReciApp/Localizable.xcstrings").read_text(encoding="utf-8")
+    )
+    strings = catalog["strings"]
+    expected = set(strings["Your recipe is ready"]["localizations"])
+    for key in (
+        "Notify me when ready",
+        "Notifications are off. Your recipe will still appear in your library.",
+        "Open Settings",
+        "Notifications on",
+    ):
+        assert set(strings[key]["localizations"]) == expected, key
 
 
 def test_ios_routes_are_registered_in_server(ios_root: Path):
