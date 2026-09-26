@@ -155,6 +155,17 @@ def test_swift_models_match_server_retry_and_idempotency_fields(ios_root: Path):
     assert "error_code: str | None = None" in server_models
 
 
+def test_share_delivery_is_acknowledged_only_after_job_is_persisted(ios_root: Path):
+    source = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
+    submit = source.split("private func submitShareInbox(language:", 1)[1].split(
+        "private func submitShareInboxAndFollow", 1
+    )[0]
+    accepted = submit.index("let started = try await api.extract")
+    persisted = submit.index("ImportJobStore.save(", accepted)
+    acknowledged = submit.index("markShareDeliveryProcessed(delivery.id", accepted)
+    assert persisted < acknowledged
+
+
 @pytest.mark.skip(reason="Replaced by runnable ClientStateHarness behavioral tests")
 def test_ios_recipe_refresh_is_cached_coalesced_and_not_blocked_by_profile():
     view_model = Path("IosAPP/ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
