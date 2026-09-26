@@ -82,10 +82,10 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - Xcode Debug unsigned Simulator: build actual correcto con dependencias SwiftPM resueltas. No hubo ejecución visual ni prueba firmada en dispositivo.
 - Consulté el SQL real de readiness en un PostgreSQL temporal aislado: migración 008 correcta → `delivery_column=t`, `delivery_index=t`; índice no único y mal definido con el mismo nombre → `delivery_index=f`.
 - El contenedor de producción tiene DSN Sentry configurado y entorno `production`; no pude consultar issues porque falta `SENTRY_AUTH_TOKEN` local. No se leyó ni compartió ningún token ni DSN.
-- `/health` y `/ready` públicos respondieron HTTP 200 en la revalidación de hoy. La respuesta pública de `/ready` no identifica qué build ni qué comprobaciones ejecuta, así que no confirma por sí sola el estado de las migraciones 008/009.
+- En la revalidación pública anterior, `/health` y `/ready` respondieron HTTP 200. En esta continuación no pude volver a consultar producción: DNS no resolvió `51-255-43-100.sslip.io`; por tanto, los 200 anteriores no son una comprobación de ahora. La respuesta previa de `/ready` tampoco identificaba build ni comprobaciones, así que no confirmaba por sí sola 008/009.
 - No se probó Apple login ni una extracción real en dispositivo; tampoco la compra/restauración sandbox de extremo a extremo, aunque sí hay webhooks Superwall procesados en producción.
 - Los cambios de API/app están en las ramas remotas `codex/reciapp-server-integration` y `codex/reciapp-ios-integration`; la configuración del worker está en un commit local de `codex/reciapp-durable-worker` porque el repo ops no tiene remoto. Ninguno se ha desplegado en producción ni publicado en App Store.
-- Los PR de API e iOS siguen abiertos en borrador y marcados como mergeables; GitHub no devuelve checks de CI para sus commits actuales. Sus descripciones aún indican 246 pruebas de servidor y 46 del harness iOS, frente a los resultados revalidados de 253 y 47.
+- En la última consulta GitHub exitosa, los PR de API e iOS seguían abiertos en borrador y marcados como mergeables, sin checks de CI; sus descripciones indicaban 246 pruebas de servidor y 46 del harness iOS, frente a 253 y 47 verificados localmente. Tras los pushes recientes no pude reconsultar GitHub por fallo de conexión; PR state, checks y descripciones actuales quedan sin verificar.
 
 ## Siguiente orden de aceptación
 
