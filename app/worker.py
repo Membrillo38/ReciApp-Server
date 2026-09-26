@@ -1,8 +1,7 @@
-"""Optional durable worker for extract_jobs.
+"""Durable worker for extract_jobs.
 
-This module remains available for separately authorized local recovery.
 One process claims one job at a time; Postgres leases make restarts and
-stale claims recoverable.
+stale claims recoverable. Production Compose runs this alongside the API.
 """
 
 from __future__ import annotations
