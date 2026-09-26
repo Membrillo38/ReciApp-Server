@@ -37,7 +37,7 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 
 ## Riesgos pendientes
 
-### Migración 008 de imports: estado de producción sin confirmar
+### Migración 008 de imports: falta en producción
 
 Observaciones de solo lectura en producción, 2026-09-26:
 
