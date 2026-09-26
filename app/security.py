@@ -253,12 +253,22 @@ def require_rate_limit(
     window_seconds: int,
     event: str,
     retry_after_seconds: int = 60,
+    audit_user_id: str | None = None,
 ) -> None:
     raise_if_banned(key)
     if allow_rate_limit(key, limit=limit, window_seconds=window_seconds):
         return
     ban_retry_after = record_rate_limit_violation(key)
-    audit_security_event(event=event, request=request)
+    audit_security_event(
+        event=event,
+        request=request,
+        user_id=audit_user_id,
+        metadata={
+            "limit": limit,
+            "window_seconds": window_seconds,
+            "correlation_id": getattr(request.state, "correlation_id", None),
+        },
+    )
     raise HTTPException(
         status_code=429,
         detail="Temporarily banned for repeated rate-limit violations" if ban_retry_after else "Too many requests",

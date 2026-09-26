@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from app.auth import AuthUser
 from app.db import execute, fetch_one
 from app.limits import resolve_user_limits
+from app.security import audit_security_event
 
 # Product cap for non-Pro. DB free_weekly_limit is legacy; this is the ceiling.
 FREE_YEARLY_LIMIT = 3
@@ -96,11 +98,26 @@ def get_quota(user: AuthUser) -> QuotaStatus:
     )
 
 
-def assert_can_extract(user: AuthUser, *, cache_hit: bool) -> None:
+def assert_can_extract(
+    user: AuthUser, *, cache_hit: bool, request: Request | None = None
+) -> None:
     q = get_quota(user)
 
     if not user.is_pro:
         if q.free_remaining <= 0:
+            if request is not None:
+                audit_security_event(
+                    event="extract_quota_denied",
+                    request=request,
+                    user_id=user.id,
+                    metadata={
+                        "code": "FREE_YEARLY_LIMIT",
+                        "period": "year",
+                        "limit": q.free_limit,
+                        "used": q.free_used_this_week,
+                        "correlation_id": getattr(request.state, "correlation_id", None),
+                    },
+                )
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -118,6 +135,17 @@ def assert_can_extract(user: AuthUser, *, cache_hit: bool) -> None:
     if cache_hit:
         return
     if q.pro_remaining_cents <= 0:
+        if request is not None:
+            audit_security_event(
+                event="extract_quota_denied",
+                request=request,
+                user_id=user.id,
+                metadata={
+                    "code": "PRO_FAIR_USE_LIMIT",
+                    "period": "month",
+                    "correlation_id": getattr(request.state, "correlation_id", None),
+                },
+            )
         raise HTTPException(
             status_code=403,
             detail={

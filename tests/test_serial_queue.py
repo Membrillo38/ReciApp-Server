@@ -154,6 +154,39 @@ def test_rate_limit_includes_retry_after(monkeypatch):
     assert caught.value.headers.get("Retry-After") == "60"
 
 
+def test_user_rate_limit_audit_includes_user_and_safe_context(monkeypatch):
+    security._rate_limiters.clear()
+    request = _request()
+    request.state.correlation_id = "corr-test"
+    events = []
+    monkeypatch.setattr(security, "audit_security_event", lambda **kwargs: events.append(kwargs))
+    security.require_rate_limit(
+        request,
+        key="extract-user:test-user",
+        limit=1,
+        window_seconds=60,
+        event="extract_user_rate_limited",
+    )
+
+    with pytest.raises(HTTPException):
+        security.require_rate_limit(
+            request,
+            key="extract-user:test-user",
+            limit=1,
+            window_seconds=60,
+            event="extract_user_rate_limited",
+            audit_user_id="test-user",
+        )
+
+    assert len(events) == 1
+    assert events[0]["user_id"] == "test-user"
+    assert events[0]["metadata"] == {
+        "limit": 1,
+        "window_seconds": 60,
+        "correlation_id": "corr-test",
+    }
+
+
 def test_rate_limiters_do_not_clobber_each_other():
     security._rate_limiters.clear()
     assert security.allow_rate_limit("a", limit=2, window_seconds=60)

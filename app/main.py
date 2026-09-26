@@ -321,6 +321,7 @@ def _share_job_or_http(row: dict, user: AuthUser) -> None:
 
 def _ensure_translation_job(
     *,
+    request: Request | None = None,
     user: AuthUser,
     recipe_id: UUID,
     source_url_raw: str,
@@ -344,7 +345,7 @@ def _ensure_translation_job(
             _share_job_or_http(active, user)
             return active
 
-    assert_can_extract(user, cache_hit=False)
+    assert_can_extract(user, cache_hit=False, request=request)
     local_claimed = not settings.worker_enabled
     if local_claimed:
         claim_job(user.id)
@@ -462,6 +463,7 @@ async def _finish_request_metrics(request, call_next, start, correlation_id, con
                     limit=settings.rate_limit_per_user_per_minute,
                     window_seconds=60,
                     event="general_user_rate_limited",
+                    audit_user_id=user_id,
                 )
         except HTTPException as exc:
             response = JSONResponse(
@@ -846,6 +848,7 @@ def extract_recipe(
         limit=settings.rate_limit_extract_per_user_per_minute,
         window_seconds=60,
         event="extract_user_rate_limited",
+        audit_user_id=user.id,
     )
     require_rate_limit(
         request,
@@ -854,6 +857,7 @@ def extract_recipe(
         window_seconds=24 * 60 * 60,
         event="extract_user_daily_rate_limited",
         retry_after_seconds=60 * 60,
+        audit_user_id=user.id,
     )
 
     cached = get_recipe_by_norm(url_norm)
@@ -908,6 +912,7 @@ def extract_recipe(
             raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
         job = _ensure_translation_job(
+            request=request,
             user=user,
             recipe_id=recipe_id,
             source_url_raw=url,
@@ -937,7 +942,7 @@ def extract_recipe(
     if not settings.openai_api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
-    assert_can_extract(user, cache_hit=False)
+    assert_can_extract(user, cache_hit=False, request=request)
 
     open_count = count_user_open_extract_jobs(user.id)
     if open_count >= settings.max_pending_jobs_per_user:
@@ -1093,6 +1098,7 @@ def get_job_status(
                 and requested_language != row_language
             ):
                 translation_job = _ensure_translation_job(
+                    request=request,
                     user=user,
                     recipe_id=_as_uuid(row["recipe_id"]),
                     source_url_raw=row.get("source_url_raw") or r.get("source_url_raw") or "",
