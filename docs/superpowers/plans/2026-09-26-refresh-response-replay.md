@@ -45,7 +45,7 @@
 - [x] Update logout so a matching pending request revokes the stored successor hash too.
 - [x] Extend readiness checks to require all three 009 columns, so an API build using them cannot report ready against a pre-009 schema.
 - [x] Document the 008 then 009 rollout order and rollback behavior.
-- [x] Run the full server suite: 251 passed, 2 skipped.
+- [x] Run the full server suite: 253 passed, 2 skipped.
 
 ### Task 2: Persist one request ID across client retries
 
@@ -67,7 +67,7 @@
 
 ### Task 3: Verify rollout and compatibility
 
-- [x] Run final server tests (251 passed, 2 skipped), harness tests (47 passed), simulator build, and `git diff --check`.
+- [x] Run final server tests (253 passed, 2 skipped), harness tests (47 passed), simulator build, and `git diff --check`.
 - [x] Verify migration 009 is additive and leaves existing refresh rows unchanged.
 - [x] Verify readiness requires all three 009 columns.
 - [x] Keep production rollout blocked until migrations 008 and 009 are applied and the new server build is deployed; neither migration is applied as part of this code change.

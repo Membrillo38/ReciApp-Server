@@ -155,6 +155,51 @@ def test_swift_models_match_server_retry_and_idempotency_fields(ios_root: Path):
     assert "error_code: str | None = None" in server_models
 
 
+def test_ios_routes_are_registered_in_server(ios_root: Path):
+    api_client = (ios_root / "ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
+    auth_service = (ios_root / "ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
+    client_routes = {
+        ("GET", "/health"): 'appending(path: "health")',
+        ("GET", "/v1/me"): 'request("v1/me")',
+        ("DELETE", "/v1/me"): 'request("v1/me", method: "DELETE"',
+        ("GET", "/v1/me/recipes"): 'request("v1/me/recipes", language: language)',
+        ("DELETE", "/v1/me/recipes/{recipe_id}"): 'request("v1/me/recipes/\\(id.uuidString)"',
+        ("GET", "/v1/recipes/{recipe_id}"): 'request("v1/recipes/\\(id.uuidString)"',
+        ("POST", "/v1/extract"): 'request("v1/extract", method: "POST"',
+        ("GET", "/v1/me/jobs"): 'request("v1/me/jobs")',
+        ("GET", "/v1/jobs/{job_id}"): 'request("v1/jobs/\\(id.uuidString)"',
+        ("POST", "/v1/auth/apple"): 'post("v1/auth/apple", body: payload)',
+        ("POST", "/v1/auth/refresh"): '"v1/auth/refresh"',
+        ("POST", "/v1/auth/logout"): '"v1/auth/logout"',
+    }
+    registered = {
+        (method, route.path)
+        for route in main.app.routes
+        for method in (route.methods or set())
+    }
+
+    for (method, path), source in client_routes.items():
+        assert (method, path) in registered, f"FastAPI route missing: {method} {path}"
+        client_source = auth_service if path.startswith("/v1/auth/") else api_client
+        assert source in client_source, f"iOS route call missing: {method} {path}"
+
+
+def test_refresh_request_id_contract_matches_ios_and_server(ios_root: Path):
+    client = (ios_root / "ReciApp/Services/AuthService.swift").read_text(encoding="utf-8")
+    server_models = Path("app/models.py").read_text(encoding="utf-8")
+    server_routes = Path("app/main.py").read_text(encoding="utf-8")
+
+    assert "var refreshRequestID: UUID? = nil" in client
+    assert "let requestID: UUID?" in client
+    assert "encoder.keyEncodingStrategy = .convertToSnakeCase" in client
+    assert server_models.count("request_id: UUID | None = None") == 2
+    assert "rotate_refresh_token(body.refresh_token, body.request_id)" in server_routes
+    assert "revoke_refresh_token(body.refresh_token, body.request_id)" in server_routes
+    assert client.index("persistedRefreshRequestID(for: snapshot)") < client.index(
+        "refreshFromBackend("
+    )
+
+
 def test_share_delivery_is_acknowledged_only_after_job_is_persisted(ios_root: Path):
     source = (ios_root / "ReciApp/ViewModels/AppViewModel.swift").read_text(encoding="utf-8")
     submit = source.split("private func submitShareInbox(language:", 1)[1].split(
