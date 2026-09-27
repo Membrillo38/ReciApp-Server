@@ -434,6 +434,21 @@ def test_database_advisor_hardening_indexes_foreign_keys_and_caches_rls_identity
     assert "user_recipes_recipe_idx" in migration
 
 
+def test_rls_hardening_scopes_jobs_and_anonymized_usage_rows():
+    migration = Path("migrations/011_row_level_security_hardening.sql").read_text(encoding="utf-8")
+    job_select = migration.split("create policy extract_jobs_select", 1)[1].split("drop policy if exists extract_jobs_insert", 1)[0]
+    usage_policy = migration.split("create policy usage_events_self", 1)[1].split("drop policy if exists api_spend_ledger_self", 1)[0]
+    spend_policy = migration.split("create policy api_spend_ledger_self", 1)[1].split("drop policy if exists auth_refresh_tokens_auth", 1)[0]
+
+    assert "user_id = public.app_user_id()" in job_select
+    assert "public.extract_job_access" in job_select
+    assert "status in ('pending', 'processing')" not in job_select
+    assert "user_id = public.app_user_id()" in usage_policy
+    assert "user_id is null" not in usage_policy
+    assert "user_id = public.app_user_id()" in spend_policy
+    assert "user_id is null" not in spend_policy
+
+
 def test_reserve_api_spend_qualifies_ledger_reserved_cents():
     migration = Path("migrations/001_init.sql").read_text(encoding="utf-8")
     assert "then ledger.reserved_cents else ledger.actual_cents" in migration
