@@ -1,3 +1,4 @@
+import base64
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -41,6 +42,7 @@ def _configure_apns(monkeypatch):
     monkeypatch.setattr(settings, "apns_team_id", "TEAMID1234")
     monkeypatch.setattr(settings, "apns_key_id", "KEYID12345")
     monkeypatch.setattr(settings, "apns_auth_key", "test-key")
+    monkeypatch.setattr(settings, "apns_auth_key_b64", "")
     monkeypatch.setattr(settings, "apns_topic", "com.membri.reciapp")
 
 
@@ -60,6 +62,39 @@ def test_provider_token_uses_es256_team_and_key_id(monkeypatch):
     assert claims["iss"] == "TEAMID1234"
     assert isinstance(claims["iat"], int)
     assert jwt.get_unverified_header(token)["kid"] == "KEYID12345"
+
+
+def test_provider_token_decodes_escaped_private_key_newlines(monkeypatch):
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    _configure_apns(monkeypatch)
+    monkeypatch.setattr(settings, "apns_auth_key", private_pem.replace("\n", r"\n"))
+
+    token = APNsClient()._token()
+
+    claims = jwt.decode(token, private_key.public_key(), algorithms=["ES256"])
+    assert claims["iss"] == "TEAMID1234"
+
+
+def test_provider_token_accepts_base64_private_key_secret(monkeypatch):
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    _configure_apns(monkeypatch)
+    monkeypatch.setattr(settings, "apns_auth_key", "")
+    monkeypatch.setattr(settings, "apns_auth_key_b64", base64.b64encode(private_pem).decode())
+
+    token = APNsClient()._token()
+
+    claims = jwt.decode(token, private_key.public_key(), algorithms=["ES256"])
+    assert claims["iss"] == "TEAMID1234"
 
 
 def test_send_uses_selected_app_language_and_sandbox_endpoint(monkeypatch):

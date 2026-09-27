@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import time
 from dataclasses import dataclass
@@ -48,7 +49,7 @@ class APNsClient:
             settings.apns_enabled
             and len(settings.apns_team_id) == 10
             and len(settings.apns_key_id) == 10
-            and settings.apns_auth_key
+            and (settings.apns_auth_key or settings.apns_auth_key_b64)
             and settings.apns_topic
             and settings.apns_topic == settings.apple_bundle_id
         )
@@ -65,9 +66,13 @@ class APNsClient:
         with self._lock:
             if self._provider_token and now - self._provider_token_created_at < 50 * 60:
                 return self._provider_token
+            private_key = settings.apns_auth_key
+            if settings.apns_auth_key_b64:
+                private_key = base64.b64decode(settings.apns_auth_key_b64, validate=True).decode("utf-8")
+            private_key = private_key.replace("\\n", "\n")
             token = jwt.encode(
                 {"iss": settings.apns_team_id, "iat": now},
-                settings.apns_auth_key,
+                private_key,
                 algorithm="ES256",
                 headers={"kid": settings.apns_key_id},
             )
