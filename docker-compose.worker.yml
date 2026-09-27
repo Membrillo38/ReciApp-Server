@@ -11,6 +11,10 @@ services:
     image: ${RECIAPP_IMAGE:?set RECIAPP_IMAGE to the Coolify backend image}
     container_name: reciapp-worker
     restart: unless-stopped
+    # The shared image healthcheck probes the API's HTTP port; the worker has
+    # no HTTP server. API /ready validates the durable worker heartbeat.
+    healthcheck:
+      disable: true
     command: ["python", "-m", "app.worker"]
     env_file:
       - ${RECIAPP_ENV_FILE:-/etc/reciapp/recipe-backend.env}
