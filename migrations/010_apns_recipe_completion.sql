@@ -1,7 +1,41 @@
 -- Durable, per-device recipe-completion notifications.
 -- Additive migration. Keeping these tables after code rollback is safe.
 
-create table public.push_devices (
+-- These helpers are normally installed by migration 002. Define them here as
+-- well so this additive feature migration can safely repair older databases
+-- that never recorded/applied the RLS baseline.
+create or replace function public.app_is_service()
+returns boolean
+language sql
+stable
+parallel safe
+set search_path = pg_catalog, public
+as $$
+  select coalesce(current_setting('app.actor', true), '') = 'service'
+$$;
+
+create or replace function public.app_user_id()
+returns uuid
+language sql
+stable
+parallel safe
+set search_path = pg_catalog, public
+as $$
+  select nullif(current_setting('app.user_id', true), '')::uuid
+$$;
+
+revoke all on function public.app_is_service() from public;
+revoke all on function public.app_user_id() from public;
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_roles where rolname = 'reciapp') then
+    grant execute on function public.app_is_service() to reciapp;
+    grant execute on function public.app_user_id() to reciapp;
+  end if;
+end;
+$$;
+
+create table if not exists public.push_devices (
   token_hash text primary key check (token_hash ~ '^[0-9a-f]{64}$'),
   user_id uuid not null references public.profiles (id) on delete cascade,
   device_token text not null check (
@@ -14,9 +48,9 @@ create table public.push_devices (
   updated_at timestamptz not null default now()
 );
 
-create index push_devices_user_idx on public.push_devices (user_id);
+create index if not exists push_devices_user_idx on public.push_devices (user_id);
 
-create table public.push_deliveries (
+create table if not exists public.push_deliveries (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references public.extract_jobs (id) on delete cascade,
   user_id uuid not null references public.profiles (id) on delete cascade,
@@ -33,31 +67,36 @@ create table public.push_deliveries (
   unique (job_id, token_hash)
 );
 
-create index push_deliveries_claim_idx
+create index if not exists push_deliveries_claim_idx
   on public.push_deliveries (status, next_attempt_at, created_at)
   where status in ('pending', 'processing');
-create index push_deliveries_user_idx on public.push_deliveries (user_id, created_at desc);
+create index if not exists push_deliveries_user_idx on public.push_deliveries (user_id, created_at desc);
 
-create table public.app_runtime_heartbeats (
+create table if not exists public.app_runtime_heartbeats (
   service_name text primary key check (service_name in ('recipe-worker')),
   last_seen_at timestamptz not null default now()
 );
 alter table public.app_runtime_heartbeats enable row level security;
 alter table public.app_runtime_heartbeats force row level security;
+drop policy if exists app_runtime_heartbeats_service on public.app_runtime_heartbeats;
 create policy app_runtime_heartbeats_service on public.app_runtime_heartbeats
   using (public.app_is_service()) with check (public.app_is_service());
 
 alter table public.push_devices enable row level security;
 alter table public.push_devices force row level security;
+drop policy if exists push_devices_service on public.push_devices;
 create policy push_devices_service on public.push_devices
   using (public.app_is_service()) with check (public.app_is_service());
+drop policy if exists push_devices_self on public.push_devices;
 create policy push_devices_self on public.push_devices
   using (user_id = public.app_user_id()) with check (user_id = public.app_user_id());
 
 alter table public.push_deliveries enable row level security;
 alter table public.push_deliveries force row level security;
+drop policy if exists push_deliveries_service on public.push_deliveries;
 create policy push_deliveries_service on public.push_deliveries
   using (public.app_is_service()) with check (public.app_is_service());
+drop policy if exists push_deliveries_delete_self on public.push_deliveries;
 create policy push_deliveries_delete_self on public.push_deliveries
   for delete using (user_id = public.app_user_id());
 
@@ -114,6 +153,7 @@ $$;
 
 revoke all on function public.enqueue_recipe_completion_pushes() from public;
 
+drop trigger if exists extract_job_enqueue_recipe_completion_pushes on public.extract_jobs;
 create trigger extract_job_enqueue_recipe_completion_pushes
   after insert or update of status on public.extract_jobs
   for each row execute function public.enqueue_recipe_completion_pushes();
