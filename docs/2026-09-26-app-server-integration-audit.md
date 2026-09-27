@@ -3,11 +3,11 @@
 Fecha: 2026-09-26
 Repositorios revisados: `ReciApp-iOS` y `ReciApp-Server`.
 
-Actualización: 2026-09-27. Estado de código y pruebas actualizado. El hostname público sigue sin resolver desde este entorno; revalidé producción mediante SSH de solo lectura y añadí el resultado fechado en “Pruebas y producción”.
+Actualización: 2026-09-27. El rollout de producción terminó para servidor, worker y RLS; véase “Rollout de producción completado”. APNs y la prueba en iPhone siguen pendientes.
 
 ## Resultado
 
-En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. En la comprobación directa del VPS de hoy, el API respondió `/health` y `/ready` con 200, pero ejecuta el commit `36a7cc16` de `main`, no los cambios de las ramas de integración; la consulta SQL de solo lectura confirmó que faltan tanto los objetos de migración 008 (`false/false`) como las tres columnas de 009 (`false`). Además, `WORKER_ENABLED=false` y no hay contenedor worker. El 200 de `/ready` no detecta esos requisitos en la versión desplegada. Por tanto, los imports nuevos de ShareInbox y el replay seguro de refresh no se pueden dar por operativos en producción. La app compila para iOS Simulator; faltan pruebas autenticadas en un iPhone.
+En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. El estado inicial de producción encontrado en la auditoría era incompleto, pero se corrigió en el rollout del 2026-09-27: API y worker ejecutan ahora el mismo build, `WORKER_ENABLED=true`, migraciones 008–011 aplicadas, rol runtime sin privilegios de superusuario y `/health`/`/ready` con 200. El smoke test de RLS se hizo desde la conexión real de API. APNs y las pruebas autenticadas en iPhone siguen pendientes.
 
 ## Cambios hechos en esta revisión
 
@@ -99,7 +99,9 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - No se probó Apple login ni una extracción real en dispositivo; tampoco la compra/restauración sandbox de extremo a extremo, aunque sí hay webhooks Superwall procesados en producción.
 - Los cambios están publicados en las ramas remotas `codex/reciapp-server-integration` (`aa5d0db`, último HEAD) y `codex/reciapp-ios-integration` (`864a487`, último HEAD). El repo del backend incluye `docker-compose.worker.yml`; su YAML se parseó localmente, pero Docker CLI no está instalado, así que no se pudo validar con `docker compose config`. La integración aún no se ha desplegado ni publicado en App Store. El repo ops tiene además el rollout de worker en un commit local de `codex/reciapp-durable-worker`, pero no tiene remoto configurado.
 
-### Actualización operativa: migraciones de producción, 2026-09-27
+### Historial anterior al rollout: migraciones de producción, 2026-09-27
+
+Los puntos siguientes registran el estado intermedio antes de terminar el rollout; el estado vigente está en “Rollout de producción completado”.
 
 - Antes del cambio generé un dump PostgreSQL adicional y comprobé gzip y cabecera del dump. Está en el almacén diario de backups del VPS.
 - Apliqué 008 y 009 en orden. Luego 010 se detuvo porque faltaban `app_is_service()` y `app_user_id()`; la base tampoco tenía registro de migraciones, políticas RLS ni RLS activado en tablas existentes. `reciapp` además figura como superusuario y `BYPASSRLS`. No apliqué migration 002 en bloque ni rebajé ese rol: ambas acciones cambian el modelo de seguridad completo y requieren una migración/rollout separado con grants probados.
@@ -110,11 +112,17 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 - Añadí `011_row_level_security_hardening.sql`, política-only: no reemplaza funciones de negocio, quita visibilidad global de jobs pendientes y evita que cuentas normales lean eventos de gasto anonimizados. Suite servidor: 266 passed, 2 skipped. Esta 011 está ensayada, todavía no aplicada a producción.
 - Última consulta disponible de GitHub API, anterior al commit iOS `864a487`: ambos PR #1 estaban abiertos en borrador, mergeables, sin checks configurados. La API no respondió en la revalidación posterior, así que ese estado no está confirmado para los HEAD actuales. Las descripciones de PR tenían conteos antiguos (246 server, 46 harness); evidencia local actual: 265/2 server, 36/2 contratos, 48 harness y build Debug Simulator pasado.
 
+### Rollout de producción completado — 2026-09-27
+
+- Se publicó y desplegó `4e10837f64164271d43ad81f9023a53f3ad77df5` en la API. La imagen de la API y la del worker coinciden.
+- Migración 011 aplicada después del backup verificado. RLS activo en 18 tablas. Se creó `reciapp_runtime` sin `SUPERUSER` ni `BYPASSRLS`, con grants de tablas, secuencias, funciones y privilegios por defecto; API y worker usan este rol. El proveedor impide quitar `SUPERUSER` al rol bootstrap `reciapp`, así que ese rol queda fuera de los servicios runtime.
+- `WORKER_ENABLED=true`; el contenedor `reciapp-worker` está arriba y escribe heartbeat fresco. API `/health` y `/ready` devolvieron 200.
+- Smoke test desde la conexión real de la API: `current_user=reciapp_runtime`; contexto de usuario aleatorio vio cero perfiles y trabajos; contexto `service` vio el heartbeat del worker.
+- APNs permanece apagado. La revisión automática bloqueó la transferencia de la clave privada `.p8`; falta autorización explícita para la transferencia exacta al secreto protegido del VPS. La entitlements de iOS está presente, pero la entrega no se verificó.
+- No fue posible probar Apple login, Pro, importación o notificaciones en un iPhone: este host no tiene identidad de firma válida ni iPhone conectado. El simulador tampoco completó ejecución real en esta sesión.
+
 ## Siguiente orden de aceptación
 
-1. Revalidar estado real de producción. Aplicar migraciones 008, 009 y 010 solo tras confirmar backup/runbook; desplegar backend con readiness de esquema y worker saludable.
-2. Verificar configuración real del webhook Superwall y compra/restauración sandbox contra `/v1/me`.
-3. Publicar el cliente que envía `client_delivery_id` solo después del paso 1.
-4. Con una cuenta de prueba: Apple login, renovación, perfil Pro/free, biblioteca, detalle traducido, URL nueva/cacheada, cola, reanudación, rate limit y borrado.
-5. Repetir esa matriz en iPhone con compilación firmada y comprobar Wi-Fi y red móvil.
-6. Habilitar APNs en App ID/perfiles, configurar secretos en API/worker y validar alertas sandbox/production, idioma, permisos, logout y reinicios del worker.
+1. Autorizar o rechazar la transferencia de la clave APNs; si se autoriza, validar la clave sin enviar una notificación a un usuario real y completar el registro/dispositivo sandbox.
+2. Conseguir un iPhone y una identidad de firma válida; probar login Apple, Pro/restore, importación nueva/cacheada, biblioteca, traducción, reintento, borrado y notificación con Wi-Fi y red móvil.
+3. Mantener pendiente la afirmación de “integración completa en dispositivo” hasta completar esos pasos; el estado de API/worker/RLS sí quedó verificado en producción.
