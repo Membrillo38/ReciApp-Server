@@ -63,6 +63,7 @@
 - Consumes: valid APNs team/key/topic and app push entitlement.
 - Produces: localized APNs delivery and visible recipe-ready notification on a signed iPhone build.
 
-- [ ] Confirm an APNs-valid `.p8` key and topic `com.membri.reciapp`. The authorized candidate key signed locally, but Apple returned `InvalidProviderToken` on a dummy-token probe; the key was removed from the VPS and APNs remains disabled pending a valid key/Team ID confirmation.
-- [ ] Enable APNs on API and worker, then register a device and verify delivery.
+- [x] Confirm an APNs-valid `.p8` key and topic `com.membri.reciapp`. On 2026-09-27, production APNs returned `BadDeviceToken` (expected for the deliberately invalid test token) when signed with the confirmed Key ID and Team ID; Apple accepted provider authentication.
+- [ ] Confirm the current Team ID is configured as `APNS_TEAM_ID` on both Coolify API and worker services. Current host could not access Coolify or SSH, so live value remains unverified; do not rely on the historical `InvalidProviderToken` result, which predates the confirmed Team ID.
+- [ ] Register a real Release device and verify delivery.
 - [ ] Run signed-device login, import, Pro restore, and notification acceptance checks. Current host has no valid Apple signing identity or connected iPhone, so this remains unverified.

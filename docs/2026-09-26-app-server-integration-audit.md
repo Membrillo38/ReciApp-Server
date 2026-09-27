@@ -3,11 +3,11 @@
 Fecha: 2026-09-26
 Repositorios revisados: `ReciApp-iOS` y `ReciApp-Server`.
 
-Actualización: 2026-09-27. El rollout de producción terminó para servidor, worker y RLS; véase “Rollout de producción completado”. APNs y la prueba en iPhone siguen pendientes.
+Actualización: 2026-09-27. El rollout de producción terminó para servidor, worker y RLS; véase “Rollout de producción completado”. La clave APNs y el Team ID correctos ya se validaron directamente con Apple, pero falta confirmar que Coolify use ese Team ID y probar entrega en iPhone. La integración iOS ya está en `main` (`864a487`); la app aún no se ha distribuido.
 
 ## Resultado
 
-En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. El estado inicial de producción encontrado en la auditoría era incompleto, pero se corrigió en el rollout del 2026-09-27: API y worker ejecutan ahora el mismo build, `WORKER_ENABLED=true`, migraciones 008–011 aplicadas, rol runtime sin privilegios de superusuario y `/health`/`/ready` con 200. El smoke test de RLS se hizo desde la conexión real de API. APNs y las pruebas autenticadas en iPhone siguen pendientes.
+En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. El estado inicial de producción encontrado en la auditoría era incompleto, pero se corrigió en el rollout del 2026-09-27: API y worker ejecutan ahora el mismo build, `WORKER_ENABLED=true`, migraciones 008–011 aplicadas, rol runtime sin privilegios de superusuario y `/health`/`/ready` con 200. El smoke test de RLS se hizo desde la conexión real de API. La revalidación actual confirma `/ready` y credenciales APNs válidas; Coolify aún debe confirmar el Team ID correcto y las pruebas autenticadas en iPhone siguen pendientes.
 
 ## Cambios hechos en esta revisión
 
@@ -122,8 +122,17 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - APNs permanece apagado. Tras la autorización del usuario, probé la clave `.p8` en APNs con un token ficticio que no puede recibir una notificación. La firma local fue válida, pero Apple respondió `InvalidProviderToken`; retiré la clave del VPS y no hubo filas en el outbox. Hace falta una clave APNs válida y confirmar su Team ID. La entitlements de iOS está presente, pero la entrega no se verificó.
 - No fue posible probar Apple login, Pro, importación o notificaciones en un iPhone: este host no tiene identidad de firma válida ni iPhone conectado. El simulador tampoco completó ejecución real en esta sesión.
 
-## Siguiente orden de aceptación
+## Orden de aceptación antes de la revalidación actual
 
 1. Autorizar o rechazar la transferencia de la clave APNs; si se autoriza, validar la clave sin enviar una notificación a un usuario real y completar el registro/dispositivo sandbox.
 2. Conseguir un iPhone y una identidad de firma válida; probar login Apple, Pro/restore, importación nueva/cacheada, biblioteca, traducción, reintento, borrado y notificación con Wi-Fi y red móvil.
 3. Mantener pendiente la afirmación de “integración completa en dispositivo” hasta completar esos pasos; el estado de API/worker/RLS sí quedó verificado en producción.
+
+## Revalidación en el host Codex — 2026-09-27
+
+- La API de producción respondió `/health` 200 y `/ready` 200 (`ready`, `environment=production`, `maintenance=false`). El probe `/ready` ejecuta las comprobaciones de migraciones 008–010, el trigger de push, la función de logout y un heartbeat reciente de `recipe-worker`; el 200 actual demuestra que esos contratos pasan en la instancia consultada.
+- Suite del servidor: 270 passed, 2 skipped. El entorno `.venv` local tiene un intérprete roto; la suite se ejecutó con Python 3.11 y los paquetes ya instalados, sin cambiar dependencias.
+- iOS `codex/reciapp-ios-integration` (`864a487`) compila en Debug y Release para iOS Simulator; la app Debug instala y arranca en iPhone 17 Simulator. `ClientStateHarness`: 48 passed; `PricingExperimentTests`: 15 passed. Después se avanzó `main` por fast-forward hasta `864a487`. Esto no prueba firma ni entrega APNs real.
+- La clave `.p8` local se pudo cargar como clave privada válida. Una petición al endpoint de producción APNs, firmada con el Key ID y Team ID confirmados y topic `com.membri.reciapp`, devolvió `BadDeviceToken` para un token de prueba inválido. Apple aceptó la autenticación; no se notificó ningún dispositivo.
+- No se pudo leer ni actualizar Coolify desde este host: el acceso de Computer Use a Vivaldi fue rechazado y SSH al VPS rechazó la clave disponible. Por ello no se confirma el `APNS_TEAM_ID` actual del API y worker; configúralo con el Team ID confirmado en ambos servicios antes de considerar listo el envío remoto.
+- Quedan pendientes: confirmar la variable APNs y reiniciar API/worker si cambia; revisar incidencias recientes de Sentry (no hay `SENTRY_AUTH_TOKEN` disponible en este host); registrar una instalación Release real; probar entrega en un iPhone; distribuir la app. `main` recibió un fast-forward; no se hizo TestFlight ni publicación App Store.
