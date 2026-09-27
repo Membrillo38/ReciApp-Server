@@ -178,6 +178,8 @@ def test_ios_routes_are_registered_in_server(ios_root: Path):
         ("GET", "/health"): 'appending(path: "health")',
         ("GET", "/v1/me"): 'request("v1/me")',
         ("DELETE", "/v1/me"): 'request("v1/me", method: "DELETE"',
+        ("PUT", "/v1/me/push-device"): 'request("v1/me/push-device", method: "PUT"',
+        ("DELETE", "/v1/me/push-device"): 'request("v1/me/push-device", method: "DELETE"',
         ("GET", "/v1/me/recipes"): 'request("v1/me/recipes", language: language)',
         ("DELETE", "/v1/me/recipes/{recipe_id}"): 'request("v1/me/recipes/\\(id.uuidString)"',
         ("GET", "/v1/recipes/{recipe_id}"): 'request("v1/recipes/\\(id.uuidString)"',
@@ -210,7 +212,7 @@ def test_refresh_request_id_contract_matches_ios_and_server(ios_root: Path):
     assert "encoder.keyEncodingStrategy = .convertToSnakeCase" in client
     assert server_models.count("request_id: UUID | None = None") == 2
     assert "rotate_refresh_token(body.refresh_token, body.request_id)" in server_routes
-    assert "revoke_refresh_token(body.refresh_token, body.request_id)" in server_routes
+    assert "revoke_refresh_token(body.refresh_token, body.request_id, push_token=body.push_token)" in server_routes
     assert client.index("persistedRefreshRequestID(for: snapshot)") < client.index(
         "refreshFromBackend("
     )

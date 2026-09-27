@@ -10,7 +10,7 @@ from uuid import UUID
 import jwt
 
 from app.config import settings
-from app.db import execute, execute_returning, fetch_one
+from app.db import execute, execute_returning, fetch_one, get_conn
 
 REFRESH_ROTATION_REPLAY_SECONDS = 900
 _REFRESH_ROTATION_DOMAIN = b"reciapp.refresh-rotation.v1\0"
@@ -138,13 +138,17 @@ def rotate_refresh_token(raw: str, request_id: UUID | None = None) -> dict | Non
     }
 
 
-def revoke_refresh_token(raw: str, request_id: UUID | None = None) -> None:
+def revoke_refresh_token(
+    raw: str,
+    request_id: UUID | None = None,
+    *,
+    push_token: str | None = None,
+) -> None:
     if not raw:
         return
     old_hash = _hash(raw)
     if request_id is not None:
-        execute(
-            """
+        sql = """
             with successor as (
                 select rotated_token_hash
                   from auth_refresh_tokens
@@ -156,19 +160,28 @@ def revoke_refresh_token(raw: str, request_id: UUID | None = None) -> None:
                set revoked_at = coalesce(t.revoked_at, now())
              where t.token_hash = %s
                 or t.token_hash = (select rotated_token_hash from successor)
-            """,
-            (old_hash, request_id, old_hash),
-        )
-        return
-    execute(
         """
-        update auth_refresh_tokens
-           set revoked_at = now()
-         where token_hash = %s
-           and revoked_at is null
-        """,
-        (old_hash,),
-    )
+        params = (old_hash, request_id, old_hash)
+    else:
+        sql = """
+            update auth_refresh_tokens
+               set revoked_at = now()
+             where token_hash = %s
+               and revoked_at is null
+        """
+        params = (old_hash,)
+    if not push_token:
+        execute(sql, params)
+        return
+
+    push_hash = hashlib.sha256(push_token.lower().encode("ascii")).hexdigest()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            cur.execute(
+                "select public.unregister_push_device_for_refresh(%s, %s)",
+                (old_hash, push_hash),
+            )
 
 
 def revoke_all_refresh_tokens(user_id: UUID) -> None:

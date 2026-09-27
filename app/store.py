@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import os
 from pathlib import Path
@@ -575,6 +576,8 @@ def delete_account_data(user_id: UUID) -> None:
     """Scrub account-owned data and close its sessions atomically."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("delete from push_deliveries where user_id = %s", (user_id,))
+            cur.execute("delete from push_devices where user_id = %s", (user_id,))
             cur.execute("delete from user_recipes where user_id = %s", (user_id,))
             cur.execute(
                 """
@@ -621,6 +624,142 @@ def delete_account_data(user_id: UUID) -> None:
                  where id = %s
                 """,
                 (user_id,),
+            )
+
+
+def _push_token_hash(token: str) -> str:
+    return hashlib.sha256(token.lower().encode("ascii")).hexdigest()
+
+
+def upsert_push_device(*, user_id: UUID, token: str, environment: str, language_code: str) -> None:
+    normalized_token = token.lower()
+    token_hash = _push_token_hash(normalized_token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into push_devices (token_hash, user_id, device_token, environment, language_code)
+                values (%s, %s, %s, %s, %s)
+                on conflict (token_hash) do update
+                   set user_id = excluded.user_id,
+                       device_token = excluded.device_token,
+                       environment = excluded.environment,
+                       language_code = excluded.language_code,
+                       updated_at = now()
+                """,
+                (token_hash, user_id, normalized_token, environment, language_code),
+            )
+            # A device changing accounts must not receive queued alerts for its former owner.
+            cur.execute(
+                "delete from push_deliveries where token_hash = %s and user_id <> %s",
+                (token_hash, user_id),
+            )
+
+
+def delete_push_device(*, user_id: UUID, token: str) -> None:
+    token_hash = _push_token_hash(token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "delete from push_deliveries where user_id = %s and token_hash = %s",
+                (user_id, token_hash),
+            )
+            cur.execute(
+                "delete from push_devices where user_id = %s and token_hash = %s",
+                (user_id, token_hash),
+            )
+
+
+def claim_push_delivery() -> dict | None:
+    return execute_returning(
+        """
+        with exhausted as (
+            update push_deliveries
+               set status = 'failed', device_token = null, lease_until = null,
+                   last_error_code = 'attempts_exhausted'
+             where status = 'processing' and attempts >= 8 and lease_until < now()
+            returning id
+        ), candidate as (
+            select id
+              from push_deliveries
+             where attempts < 8
+               and device_token is not null
+               and (
+                 (status = 'pending' and next_attempt_at <= now())
+                 or (status = 'processing' and lease_until < now())
+               )
+             order by next_attempt_at, created_at
+             for update skip locked
+             limit 1
+        ), claimed as (
+            update push_deliveries delivery
+               set status = 'processing',
+                   attempts = attempts + 1,
+                   lease_until = now() + interval '90 seconds'
+              from candidate
+             where delivery.id = candidate.id
+            returning delivery.*
+        )
+        select claimed.id, claimed.user_id, claimed.job_id, claimed.token_hash,
+               claimed.device_token, claimed.environment, claimed.attempts,
+               device.language_code,
+               job.recipe_id
+          from claimed
+          join extract_jobs job on job.id = claimed.job_id
+          join push_devices device
+            on device.token_hash = claimed.token_hash and device.user_id = claimed.user_id
+        """
+    )
+
+
+def finish_push_delivery(
+    *,
+    delivery_id: UUID,
+    token_hash: str,
+    user_id: UUID,
+    status: str,
+    error_code: str | None = None,
+    retry_after_seconds: int = 0,
+) -> None:
+    if status not in {"sent", "retry", "invalid_device", "failed"}:
+        raise ValueError("Invalid push delivery status")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if status == "invalid_device":
+                cur.execute(
+                    """
+                     update push_deliveries
+                       set status = 'failed', device_token = null, lease_until = null,
+                           last_error_code = 'Unregistered'
+                     where token_hash = %s and user_id = %s and status in ('pending', 'processing')
+                    """,
+                    (token_hash, user_id),
+                )
+                cur.execute("delete from push_devices where token_hash = %s and user_id = %s", (token_hash, user_id))
+                return
+            if status == "retry":
+                cur.execute(
+                    """
+                    update push_deliveries
+                       set status = case when attempts >= 8 then 'failed' else 'pending' end,
+                           device_token = case when attempts >= 8 then null else device_token end,
+                           next_attempt_at = now() + (%s * interval '1 second'),
+                           lease_until = null,
+                           last_error_code = %s
+                     where id = %s and status = 'processing'
+                    """,
+                    (max(1, min(retry_after_seconds, 3600)), error_code, delivery_id),
+                )
+                return
+            cur.execute(
+                """
+                update push_deliveries
+                   set status = %s, device_token = null, lease_until = null,
+                       sent_at = case when %s = 'sent' then now() else sent_at end,
+                       last_error_code = %s
+                 where id = %s and status = 'processing'
+                """,
+                (status, status, error_code, delivery_id),
             )
 
 

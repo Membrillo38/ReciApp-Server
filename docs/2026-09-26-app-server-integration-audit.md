@@ -3,6 +3,8 @@
 Fecha: 2026-09-26
 Repositorios revisados: `ReciApp-iOS` y `ReciApp-Server`.
 
+Actualización: 2026-09-27. Estado de código y pruebas actualizado en esta continuación; las observaciones de producción debajo conservan su fecha original porque la resolución DNS del endpoint falla desde este entorno y no se han podido renovar.
+
 ## Resultado
 
 En las fuentes locales, los contratos principales de login, perfil, biblioteca, detalle, importación, cola, traducción, borrado y errores coinciden entre Swift y FastAPI. En la comprobación directa del VPS de hoy, el API respondió `/health` y `/ready` con 200, pero ejecuta el commit `36a7cc16` de `main`, no los cambios de las ramas de integración; la consulta SQL de solo lectura confirmó que faltan tanto los objetos de migración 008 (`false/false`) como las tres columnas de 009 (`false`). Además, `WORKER_ENABLED=false` y no hay contenedor worker. El 200 de `/ready` no detecta esos requisitos en la versión desplegada. Por tanto, los imports nuevos de ShareInbox y el replay seguro de refresh no se pueden dar por operativos en producción. La app compila para iOS Simulator; faltan pruebas autenticadas en un iPhone.
@@ -25,6 +27,9 @@ En las fuentes locales, los contratos principales de login, perfil, biblioteca, 
 - La suite completa del servidor pasa con 254 tests y 2 skips. Añadí contratos cruzados que verifican rutas iOS contra FastAPI, `request_id` en refresh/logout y cobertura de los cuatro controles de notificación en todos los idiomas de aviso final. `ClientStateHarness` pasa 48 tests. En PostgreSQL temporal apliqué migraciones 001–009: refresh concurrente devolvió el mismo sucesor, expiración/logout/perfil cerrado rechazaron replay, cliente legacy conservó rotación de un uso, endpoints HTTP refresh/logout pasaron y readiness falló al quitar cada columna 009. El clúster temporal se eliminó. Migraciones 008 y 009 siguen pendientes en producción; desplegar código sin ambas hará que `/ready` falle y no completa imports/refresh replay.
 - Añadí cobertura iOS para respuestas HTTP 500/502: conserva el import y permite recuperarlo sin repetir automáticamente el `POST` incierto.
 - ShareInbox guardaba la entrega, pero repetía errores transitorios del extractor cada 2 segundos. Ahora aplica backoff exponencial hasta 60 segundos, respeta `Retry-After` cuando fija un mínimo y limpia el estado al completar o reintentar manualmente. Verificado con 48 pruebas del `ClientStateHarness` y build iOS Simulator.
+- Añadí notificaciones APNs de finalización con outbox durable para extracción y traducción, limpieza por logout y borrado de cuenta, reintentos acotados, detección de token inválido y heartbeat de worker. Cache hits no generan push. Registro push solo se anuncia si credenciales APNs y worker durable están listos; si no, la app usa aviso local. La alerta usa el idioma seleccionado en ReciApp y cubre los 50 códigos compartidos con el servidor. Generador: `scripts/sync_apns_localizations.py`.
+- La revisión de la migración 010 detectó un constraint PostgreSQL inválido para el rango `{32,512}` en una expresión regular. Lo reemplacé por comprobación de longitud más regex hexadecimal. Migraciones 001–010 pasan en PostgreSQL 14 temporal; una transacción semántica confirmó aviso para dueño y usuario compartido, exclusión de cache hit, claim duradero, idioma, logout y eliminación de entregas. Readiness real pasó sin worker requerido y con heartbeat fresco; rechazó heartbeat obsoleto.
+- Cobertura actual del servidor: 265 tests pasan y 2 omitidos. Build iOS Debug y Release para Simulator pasan; `ClientStateHarness` conserva 48 tests pasados. Las builds no verifican firma APNs ni entrega en dispositivo.
 - Corregí una ventana de pérdida al aceptar un job desde ShareInbox: la app persistía el `job_id` antes de confirmar la entrega local. Si iOS cierra la app tras recibir la respuesta del servidor, el job se puede reanudar; si se cierra antes, el mismo `client_delivery_id` permite repetir el envío de forma idempotente. Añadí un contrato cruzado que protege el orden.
 - Alineé `ReciApp-iOS/INTEGRACION_SWIFT.md` y su checklist con el contrato vigente: 50 idiomas, tres imports Free por año UTC, códigos `FREE_YEARLY_LIMIT`/`SPEND_LIMIT`, `client_delivery_id` y `error_code`. Eliminé instrucciones antiguas que recomendaban una cuota incorrecta y aclaré que cliente depende de migración 008 para dedupe, 009 para replay de refresh.
 - En la relectura completa encontré que el README del servidor aún decía “1 recipe / week” y listaba modelos OpenAI obsoletos; corregí cuota y modelos según `app/config.py`. También actualicé el checklist iOS↔servidor: ahora refleja los 7 webhooks Superwall procesados observados y deja explícita la prueba sandbox pendiente. Quité una referencia contradictoria a “0 active endpoints” que no era evidencia actual.
@@ -63,9 +68,9 @@ El probe público de `/ready` devuelve 200 mientras la consulta directa confirma
 
 La migración 008 solo añade una columna nullable y un índice parcial único; no modifica filas existentes. No se aplicó en producción durante esta revisión.
 
-### Las notificaciones de importación no son push del servidor
+### APNs: código listo localmente; producción y dispositivo pendientes
 
-La app programa una notificación local solo cuando su sondeo detecta que terminó la receta mientras está en background. `beginBackgroundTask` es temporal; iOS puede suspender o cerrar la app antes de terminar el sondeo. El servidor no registra tokens APNs ni envía notificaciones. El aviso no está garantizado al cerrar la app o dejarla suspendida durante una importación larga. Al volver a abrirla, la app retoma el sondeo y muestra el resultado. El aviso de receta lista tiene 46 idiomas; fuera de ese aviso, el catálogo conserva 28 claves con cobertura parcial (entre 2 y 3 idiomas) y 8 claves sin traducciones. Incluye errores de login, recuperación, permisos y ajustes de medida; esas cadenas pueden salir en inglés.
+El código local ya registra tokens y envía notificaciones por APNs al completar extracción nueva o traducción solicitada; cache hits no generan alerta. La migración 010 y los secretos `APNS_*` aún requieren rollout coordinado con el worker y el cliente. El idioma se toma de la preferencia de ReciApp, no del idioma global del dispositivo. Si APNs o worker no están listos, registro responde `push_enabled=false` y el cliente conserva fallback local. APNs sigue siendo best-effort; el Simulator no prueba token real, firma ni entrega. Producción no se pudo consultar el 2026-09-27 porque DNS no resolvió el host; las observaciones de servidor/deployment debajo son del 2026-09-26.
 
 ### Worker de extracción: cambio de infraestructura preparado, no desplegado
 
@@ -93,8 +98,9 @@ La integración de código está: `SubscriptionService.identify()` envía el UUI
 
 ## Siguiente orden de aceptación
 
-1. Aplicar migraciones 008 y 009 en producción, desplegar backend con readiness de esquema y comprobar `/ready`.
+1. Revalidar estado real de producción. Aplicar migraciones 008, 009 y 010 solo tras confirmar backup/runbook; desplegar backend con readiness de esquema y worker saludable.
 2. Verificar configuración real del webhook Superwall y compra/restauración sandbox contra `/v1/me`.
 3. Publicar el cliente que envía `client_delivery_id` solo después del paso 1.
 4. Con una cuenta de prueba: Apple login, renovación, perfil Pro/free, biblioteca, detalle traducido, URL nueva/cacheada, cola, reanudación, rate limit y borrado.
 5. Repetir esa matriz en iPhone con compilación firmada y comprobar Wi-Fi y red móvil.
+6. Habilitar APNs en App ID/perfiles, configurar secretos en API/worker y validar alertas sandbox/production, idioma, permisos, logout y reinicios del worker.

@@ -95,6 +95,8 @@ class Settings(BaseSettings):
     worker_enabled: bool = False
     worker_poll_seconds: float = 5.0
     worker_lease_seconds: int = 900
+    worker_heartbeat_interval_seconds: int = Field(default=20, ge=5, le=60)
+    worker_heartbeat_ttl_seconds: int = Field(default=90, ge=30, le=300)
     max_request_body_bytes: int = 262_144
     webhook_max_age_seconds: int = 7 * 24 * 60 * 60
     apple_root_ca_pem: str = ""
@@ -104,6 +106,11 @@ class Settings(BaseSettings):
     apple_key_id: str = ""
     apple_private_key: str = Field(default="", repr=False)
     apple_token_encryption_key: str = Field(default="", repr=False)
+    apns_enabled: bool = False
+    apns_team_id: str = ""
+    apns_key_id: str = ""
+    apns_auth_key: str = Field(default="", repr=False)
+    apns_topic: str = "com.membri.reciapp"
     trusted_proxy_ips: str = ""
     rate_limit_per_ip_per_minute: int = 90
     rate_limit_per_user_per_minute: int = 60

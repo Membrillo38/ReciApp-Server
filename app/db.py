@@ -59,6 +59,23 @@ def db_context(*, actor: str, user_id: str = "") -> Iterator[None]:
         _db_user_id.reset(user_token)
 
 
+def recipe_worker_is_healthy() -> bool:
+    if not settings.worker_enabled:
+        return False
+    with db_context(actor="service"):
+        row = fetch_one(
+            """
+            select exists (
+                select 1 from app_runtime_heartbeats
+                 where service_name = 'recipe-worker'
+                   and last_seen_at > now() - (%s * interval '1 second')
+            ) as healthy
+            """,
+            (settings.worker_heartbeat_ttl_seconds,),
+        )
+    return bool(row and row.get("healthy"))
+
+
 def db_context_for_request(path: str, user_id: str | None) -> tuple[str, str]:
     """Map an HTTP path to RLS GUC values. Empty actor is fail-closed."""
     if path.startswith("/dashboard") or path.startswith("/v1/admin") or path.startswith("/v1/webhooks"):
@@ -116,9 +133,8 @@ def execute_returning(sql: str, params: Iterable[Any] | dict[str, Any] | None = 
 
 
 async def probe_postgres() -> None:
-    row = await run_in_threadpool(
-        fetch_one,
-        """
+    heartbeat_ttl = int(settings.worker_heartbeat_ttl_seconds)
+    query = f"""
         select
           exists (
             select 1 from information_schema.columns
@@ -160,10 +176,55 @@ async def probe_postgres() -> None:
                    'rotation_retry_until',
                    'rotated_token_hash'
                ])
-          ) as refresh_replay_columns
-        """,
-    )
+          ) as refresh_replay_columns,
+          (
+            select count(*) = 5
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'push_devices'
+               and column_name = any(array[
+                   'token_hash', 'user_id', 'device_token', 'environment', 'language_code'
+               ])
+          ) as push_device_columns,
+          (
+            select count(*) = 13
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'push_deliveries'
+               and column_name = any(array[
+                   'id', 'job_id', 'user_id', 'token_hash', 'device_token', 'environment',
+                   'status', 'attempts', 'next_attempt_at', 'lease_until', 'sent_at',
+                   'last_error_code', 'created_at'
+               ])
+          ) as push_delivery_columns,
+          exists (
+            select 1
+              from pg_trigger trg
+              join pg_class table_ref on table_ref.oid = trg.tgrelid
+              join pg_namespace schema_ref on schema_ref.oid = table_ref.relnamespace
+             where schema_ref.nspname = 'public'
+               and table_ref.relname = 'extract_jobs'
+               and trg.tgname = 'extract_job_enqueue_recipe_completion_pushes'
+               and trg.tgenabled <> 'D'
+               and not trg.tgisinternal
+          ) as push_completion_trigger,
+          to_regprocedure('public.unregister_push_device_for_refresh(text,text)') is not null
+            as push_logout_function,
+          exists (
+            select 1 from public.app_runtime_heartbeats
+             where service_name = 'recipe-worker'
+               and last_seen_at > now() - interval '{heartbeat_ttl} seconds'
+          ) as worker_heartbeat_recent
+        """
+    with db_context(actor="service"):
+        row = await run_in_threadpool(fetch_one, query)
     if not row or not row.get("delivery_column") or not row.get("delivery_index"):
         raise ValueError("Required import idempotency schema is missing")
     if not row.get("refresh_replay_columns"):
         raise ValueError("Required refresh replay schema is missing")
+    if not all(row.get(key) for key in (
+        "push_device_columns", "push_delivery_columns", "push_completion_trigger", "push_logout_function"
+    )):
+        raise ValueError("Required push notification schema is missing")
+    if settings.worker_enabled and not row.get("worker_heartbeat_recent"):
+        raise ValueError("Recipe worker heartbeat is stale")

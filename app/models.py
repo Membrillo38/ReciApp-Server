@@ -188,6 +188,43 @@ class AuthRefreshRequest(BaseModel):
 class AuthLogoutRequest(BaseModel):
     refresh_token: str
     request_id: UUID | None = None
+    push_token: str | None = Field(default=None, min_length=32, max_length=512, pattern=r"^[0-9A-Fa-f]+$")
+
+    @field_validator("push_token")
+    @classmethod
+    def _push_token_is_byte_aligned(cls, value: str | None) -> str | None:
+        if value is not None and len(value) % 2:
+            raise ValueError("Invalid push token")
+        return value
+
+
+class PushDeviceRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512, pattern=r"^[0-9A-Fa-f]+$")
+    environment: Literal["sandbox", "production"]
+    language: str = Field(default="en-US", min_length=2, max_length=20)
+
+    @field_validator("token")
+    @classmethod
+    def _token_is_byte_aligned(cls, value: str) -> str:
+        if len(value) % 2:
+            raise ValueError("Invalid push token")
+        return value
+
+
+class PushDeviceDeleteRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512, pattern=r"^[0-9A-Fa-f]+$")
+
+    @field_validator("token")
+    @classmethod
+    def _token_is_byte_aligned(cls, value: str) -> str:
+        if len(value) % 2:
+            raise ValueError("Invalid push token")
+        return value
+
+
+class PushDeviceResponse(BaseModel):
+    registered: bool
+    push_enabled: bool
 
 
 class AuthUserResponse(BaseModel):

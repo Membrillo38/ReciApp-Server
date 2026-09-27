@@ -1,0 +1,202 @@
+{
+  "ar": {
+    "title": "وصفتك جاهزة",
+    "body": "افتح ReciApp للعثور عليها في مكتبتك."
+  },
+  "bn": {
+    "title": "আপনার রেসিপি তৈরি",
+    "body": "আপনার লাইব্রেরিতে এটি খুঁজে পেতে ReciApp খুলুন।"
+  },
+  "ca": {
+    "title": "La teva recepta ja està a punt.",
+    "body": "Obre ReciApp per trobar-la a la biblioteca."
+  },
+  "zh-Hans": {
+    "title": "你的食谱已准备好",
+    "body": "打开 ReciApp，在你的食谱库中查看。"
+  },
+  "zh-Hant": {
+    "title": "你的食譜已準備好",
+    "body": "打開 ReciApp，在你的食譜庫中查看。"
+  },
+  "hr": {
+    "title": "Vaš je recept spreman",
+    "body": "Otvorite ReciApp i pronađite ga u svojoj zbirci."
+  },
+  "cs": {
+    "title": "Váš recept je připraven",
+    "body": "Otevřete ReciApp a najděte ho ve své knihovně."
+  },
+  "da": {
+    "title": "Din opskrift er klar",
+    "body": "Åbn ReciApp for at finde den i dit bibliotek."
+  },
+  "nl": {
+    "title": "Je recept is klaar",
+    "body": "Open ReciApp om het in je bibliotheek te vinden."
+  },
+  "en-AU": {
+    "title": "Your recipe is ready",
+    "body": "Open ReciApp to find it in your library."
+  },
+  "en-CA": {
+    "title": "Your recipe is ready",
+    "body": "Open ReciApp to find it in your library."
+  },
+  "en-GB": {
+    "title": "Your recipe is ready",
+    "body": "Open ReciApp to find it in your library."
+  },
+  "en-US": {
+    "title": "Your recipe is ready",
+    "body": "Open ReciApp to find it in your library."
+  },
+  "fi": {
+    "title": "Reseptisi on valmis",
+    "body": "Avaa ReciApp ja löydät sen kirjastostasi."
+  },
+  "fr-FR": {
+    "title": "Votre recette est prête",
+    "body": "Ouvrez ReciApp pour la retrouver dans votre bibliothèque."
+  },
+  "fr-CA": {
+    "title": "Votre recette est prête",
+    "body": "Ouvrez ReciApp pour la retrouver dans votre bibliothèque."
+  },
+  "de": {
+    "title": "Dein Rezept ist fertig",
+    "body": "Öffne ReciApp, um es in deiner Bibliothek zu finden."
+  },
+  "el": {
+    "title": "Η συνταγή σου είναι έτοιμη",
+    "body": "Άνοιξε το ReciApp για να τη βρεις στη βιβλιοθήκη σου."
+  },
+  "gu": {
+    "title": "તમારી રેસિપી તૈયાર છે",
+    "body": "તેને તમારી લાઇબ્રેરીમાં શોધવા માટે ReciApp ખોલો."
+  },
+  "he": {
+    "title": "המתכון שלך מוכן",
+    "body": "פתחו את ReciApp כדי למצוא אותו בספרייה שלכם."
+  },
+  "hi": {
+    "title": "आपकी रेसिपी तैयार है",
+    "body": "इसे अपनी लाइब्रेरी में देखने के लिए ReciApp खोलें।"
+  },
+  "hu": {
+    "title": "Elkészült a recepted",
+    "body": "Nyisd meg a ReciAppot, és megtalálod a könyvtáradban."
+  },
+  "id": {
+    "title": "Resep Anda siap",
+    "body": "Buka ReciApp untuk menemukannya di perpustakaan Anda."
+  },
+  "it": {
+    "title": "La tua ricetta è pronta",
+    "body": "Apri ReciApp per trovarla nella tua raccolta."
+  },
+  "ja": {
+    "title": "レシピの準備ができました",
+    "body": "ReciAppを開くと、ライブラリで確認できます。"
+  },
+  "kn": {
+    "title": "ನಿಮ್ಮ ರೆಸಿಪಿ ಸಿದ್ಧವಾಗಿದೆ",
+    "body": "ನಿಮ್ಮ ಲೈಬ್ರರಿಯಲ್ಲಿ ಅದನ್ನು ಹುಡುಕಲು ReciApp ತೆರೆಯಿರಿ."
+  },
+  "ko": {
+    "title": "레시피가 준비됐어요",
+    "body": "ReciApp을 열어 라이브러리에서 확인하세요."
+  },
+  "ms": {
+    "title": "Resipi anda sudah siap",
+    "body": "Buka ReciApp untuk mencarinya dalam pustaka anda."
+  },
+  "ml": {
+    "title": "നിങ്ങളുടെ പാചകക്കുറിപ്പ് തയ്യാറായി",
+    "body": "ലൈബ്രറിയിൽ കണ്ടെത്താൻ ReciApp തുറക്കൂ."
+  },
+  "mr": {
+    "title": "तुमची रेसिपी तयार आहे",
+    "body": "ती तुमच्या लायब्ररीत पाहण्यासाठी ReciApp उघडा."
+  },
+  "nb": {
+    "title": "Oppskriften din er klar",
+    "body": "Åpne ReciApp for å finne den i biblioteket ditt."
+  },
+  "or": {
+    "title": "ଆପଣଙ୍କ ରେସିପି ପ୍ରସ୍ତୁତ",
+    "body": "ଆପଣଙ୍କ ଲାଇବ୍ରେରୀରେ ଏହାକୁ ପାଇବାକୁ ReciApp ଖୋଲନ୍ତୁ।"
+  },
+  "pl": {
+    "title": "Twój przepis jest gotowy",
+    "body": "Otwórz ReciApp, aby znaleźć go w swojej bibliotece."
+  },
+  "pt-BR": {
+    "title": "Sua receita está pronta",
+    "body": "Abra o ReciApp para encontrá-la na sua biblioteca."
+  },
+  "pt-PT": {
+    "title": "A sua receita está pronta",
+    "body": "Abra a ReciApp para a encontrar na sua biblioteca."
+  },
+  "pa": {
+    "title": "ਤੁਹਾਡੀ ਰੈਸਿਪੀ ਤਿਆਰ ਹੈ",
+    "body": "ਇਸਨੂੰ ਆਪਣੀ ਲਾਇਬ੍ਰੇਰੀ ਵਿੱਚ ਲੱਭਣ ਲਈ ReciApp ਖੋਲ੍ਹੋ।"
+  },
+  "ro": {
+    "title": "Rețeta ta este gata",
+    "body": "Deschide ReciApp pentru a o găsi în biblioteca ta."
+  },
+  "ru": {
+    "title": "Ваш рецепт готов",
+    "body": "Откройте ReciApp, чтобы найти его в своей библиотеке."
+  },
+  "sk": {
+    "title": "Váš recept je pripravený",
+    "body": "Otvorte ReciApp a nájdete ho vo svojej knižnici."
+  },
+  "sl": {
+    "title": "Vaš recept je pripravljen",
+    "body": "Odprite ReciApp in ga poiščite v svoji knjižnici."
+  },
+  "es-MX": {
+    "title": "Tu receta está lista",
+    "body": "Abre ReciApp para encontrarla en tu biblioteca."
+  },
+  "es-ES": {
+    "title": "Tu receta está lista",
+    "body": "Abre ReciApp para encontrarla en tu biblioteca."
+  },
+  "sv": {
+    "title": "Ditt recept är klart",
+    "body": "Öppna ReciApp för att hitta det i ditt bibliotek."
+  },
+  "ta": {
+    "title": "உங்கள் செய்முறை தயார்",
+    "body": "உங்கள் நூலகத்தில் அதைக் காண ReciApp-ஐத் திறக்கவும்."
+  },
+  "te": {
+    "title": "మీ వంటకం సిద్ధంగా ఉంది",
+    "body": "మీ లైబ్రరీలో దాన్ని కనుగొనడానికి ReciApp తెరవండి."
+  },
+  "th": {
+    "title": "สูตรอาหารของคุณพร้อมแล้ว",
+    "body": "เปิด ReciApp เพื่อค้นหาในคลังสูตรของคุณ"
+  },
+  "tr": {
+    "title": "Tarifiniz hazır",
+    "body": "Kütüphanenizde bulmak için ReciApp’i açın."
+  },
+  "uk": {
+    "title": "Ваш рецепт готовий",
+    "body": "Відкрийте ReciApp, щоб знайти його у своїй бібліотеці."
+  },
+  "ur": {
+    "title": "آپ کی ترکیب تیار ہے",
+    "body": "اسے اپنی لائبریری میں دیکھنے کے لیے ReciApp کھولیں۔"
+  },
+  "vi": {
+    "title": "Công thức của bạn đã sẵn sàng",
+    "body": "Mở ReciApp để tìm công thức trong thư viện của bạn."
+  }
+}

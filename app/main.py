@@ -36,10 +36,11 @@ from app.auth import (
 )
 from app.auth_tokens import create_access_token, create_refresh_token, revoke_refresh_token, rotate_refresh_token
 from app.apple_notifications import process_signed_notification
+from app.apns import apns_client
 from app.config import settings
 from app.dashboard_routes import router as dashboard_router
 from app.dashboard_stats import log_request
-from app.db import db_context, db_context_for_request, execute_returning, fetch_all, get_pool, probe_postgres, reset_db
+from app.db import db_context, db_context_for_request, execute_returning, fetch_all, get_pool, probe_postgres, recipe_worker_is_healthy, reset_db
 from app.models import (
     AdminUserCreate,
     AdminUserPatch,
@@ -56,6 +57,9 @@ from app.models import (
     ListResponse,
     MeResponse,
     OkResponse,
+    PushDeviceDeleteRequest,
+    PushDeviceRequest,
+    PushDeviceResponse,
     QueuedJobItem,
     QueuedJobsResponse,
     RecipeListResponse,
@@ -86,6 +90,7 @@ from app.store import (
     create_job,
     delete_account_data,
     delete_user_recipe,
+    delete_push_device,
     get_job,
     get_active_job,
     get_job_by_delivery_id,
@@ -104,6 +109,7 @@ from app.store import (
     get_apple_refresh_token_ciphertext,
     upsert_apple_refresh_token,
     update_job,
+    upsert_push_device,
     user_can_access_job,
     user_owns_recipe,
 )
@@ -762,7 +768,7 @@ def auth_refresh(request: Request, body: AuthRefreshRequest) -> AuthTokenRespons
 @app.post("/v1/auth/logout", response_model=OkResponse)
 def auth_logout(request: Request, body: AuthLogoutRequest) -> OkResponse:
     try:
-        revoke_refresh_token(body.refresh_token, body.request_id)
+        revoke_refresh_token(body.refresh_token, body.request_id, push_token=body.push_token)
     except Exception as exc:
         auth_error(request=request, code="LOGOUT_DATABASE_ERROR", phase="logout", status=503, exc=exc)
         raise HTTPException(status_code=503, detail={"code": "LOGOUT_DATABASE_ERROR", "message": "Logout temporarily unavailable"}) from exc
@@ -783,6 +789,44 @@ def me(user: AuthUser = Depends(current_user)) -> MeResponse:
         free_remaining=q.free_remaining,
         pro_remaining_cents=q.pro_remaining_cents if user.is_pro else None,
     )
+
+
+@app.put("/v1/me/push-device", response_model=PushDeviceResponse)
+def register_push_device(
+    body: PushDeviceRequest,
+    user: AuthUser = Depends(current_user),
+) -> PushDeviceResponse:
+    try:
+        push_ready = apns_client.enabled and recipe_worker_is_healthy()
+    except Exception as exc:
+        logger.warning("push registration readiness failed error_type=%s", type(exc).__name__)
+        push_ready = False
+    if not push_ready:
+        try:
+            with db_context(actor="service"):
+                delete_push_device(user_id=user.id, token=body.token)
+        except Exception as exc:
+            # Migration may not be applied yet; local notifications remain usable.
+            logger.warning("stale push registration cleanup failed error_type=%s", type(exc).__name__)
+        return PushDeviceResponse(registered=False, push_enabled=False)
+    with db_context(actor="service"):
+        upsert_push_device(
+            user_id=user.id,
+            token=body.token,
+            environment=body.environment,
+            language_code=normalize_language(body.language),
+        )
+    return PushDeviceResponse(registered=True, push_enabled=True)
+
+
+@app.delete("/v1/me/push-device", response_model=OkResponse)
+def unregister_push_device(
+    body: PushDeviceDeleteRequest,
+    user: AuthUser = Depends(current_user),
+) -> OkResponse:
+    with db_context(actor="service"):
+        delete_push_device(user_id=user.id, token=body.token)
+    return OkResponse()
 
 
 @app.delete("/v1/me", response_model=OkResponse)

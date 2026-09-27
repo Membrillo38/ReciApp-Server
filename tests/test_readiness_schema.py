@@ -15,6 +15,10 @@ def test_ready_requires_delivery_column_and_unique_index(monkeypatch):
             "delivery_column": True,
             "delivery_index": True,
             "refresh_replay_columns": True,
+            "push_device_columns": True,
+            "push_delivery_columns": True,
+            "push_completion_trigger": True,
+            "push_logout_function": True,
         }
 
     monkeypatch.setattr(
@@ -56,9 +60,51 @@ def test_ready_fails_closed_when_refresh_replay_columns_are_missing(monkeypatch)
             "delivery_column": True,
             "delivery_index": True,
             "refresh_replay_columns": False,
+            "push_device_columns": True,
+            "push_delivery_columns": True,
+            "push_completion_trigger": True,
+            "push_logout_function": True,
         },
     )
     with pytest.raises(ValueError, match="refresh replay schema is missing"):
+        asyncio.run(db.probe_postgres())
+
+
+def test_ready_fails_closed_when_push_notification_schema_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        db,
+        "fetch_one",
+        lambda _sql: {
+            "delivery_column": True,
+            "delivery_index": True,
+            "refresh_replay_columns": True,
+            "push_device_columns": True,
+            "push_delivery_columns": False,
+            "push_completion_trigger": True,
+            "push_logout_function": True,
+        },
+    )
+    with pytest.raises(ValueError, match="push notification schema is missing"):
+        asyncio.run(db.probe_postgres())
+
+
+def test_ready_fails_closed_when_durable_worker_heartbeat_is_stale(monkeypatch):
+    monkeypatch.setattr(db.settings, "worker_enabled", True)
+    monkeypatch.setattr(
+        db,
+        "fetch_one",
+        lambda _sql: {
+            "delivery_column": True,
+            "delivery_index": True,
+            "refresh_replay_columns": True,
+            "push_device_columns": True,
+            "push_delivery_columns": True,
+            "push_completion_trigger": True,
+            "push_logout_function": True,
+            "worker_heartbeat_recent": False,
+        },
+    )
+    with pytest.raises(ValueError, match="Recipe worker heartbeat is stale"):
         asyncio.run(db.probe_postgres())
 
 

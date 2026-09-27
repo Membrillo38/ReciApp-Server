@@ -120,7 +120,17 @@ Comparte URL e idioma mediante App Group `group.com.membri.reciapp`; habilítalo
 
 `removeRecipe(id:)` elimina la asociación del usuario, no la caché global. `deleteAccount()` solicita eliminar la cuenta; después del éxito, cierra sesión y borra cachés locales. Presenta confirmación explícita en la UI para borrar la cuenta. El servidor revoca el refresh token de Apple si lo tiene, borra recetas y tokens de la app, y marca el perfil como cerrado. Conserva `apple_sub` y el historial de uso: el mismo Apple ID reactiva el mismo perfil y no reinicia el cupo free anual. Un segundo `DELETE /v1/me` con el mismo JWT es idempotente (`ok: true`). Cuentas antiguas sin token de Apple guardado no pueden revocarse en Apple: conserva el fallback de recuperación manual hasta que esas sesiones caduquen.
 
-## 7. Pruebas de aceptación de la app
+## 7. Notificaciones push de finalización
+
+La app registra el token APNs autenticado con `PUT /v1/me/push-device` (`token`, `environment`, `language`). Al cerrar sesión envía `push_token` junto al refresh token; el servidor revoca sesión y elimina el registro del dispositivo de forma transaccional. Si el usuario desactiva notificaciones, iOS llama `DELETE /v1/me/push-device`.
+
+Para activar APNs, aplica `migrations/010_apns_recipe_completion.sql` después de 008 y 009. Configura `APNS_ENABLED=true`, `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_AUTH_KEY` y `APNS_TOPIC` en API y worker. El topic debe coincidir con el bundle ID. La clave `.p8` va en el almacén de secretos del despliegue, nunca en el repo ni en la app. Durable-worker mode debe estar activo en API y worker; `/ready` exige heartbeat reciente. Si APNs o worker no están listos, registro responde `push_enabled=false`, limpia registro antiguo de ese dispositivo si el esquema está disponible y la app conserva aviso local como fallback.
+
+Las notificaciones se generan al completar extracciones nuevas o sus traducciones, no en cache hits. El aviso va a dueño y usuarios con acceso compartido. El texto usa idioma seleccionado en ReciApp, no el idioma de sistema: el servidor sirve `app/apns_localizations.json`, generado desde el catálogo iOS con `python scripts/sync_apns_localizations.py`. Al añadir idiomas al catálogo, regenera ese archivo y comprueba cobertura antes de publicar. La app registra el token idempotentemente al volver a foreground para recuperar un registro que APNs pudo invalidar.
+
+El target iOS debe tener capability Push Notifications y perfil de firma con entitlement APNs. La compilación de Simulator no valida APNs; prueba en dispositivo firmado, tanto con app en foreground/background como después de cerrarla. Prueba `sandbox` con build de desarrollo y `production` con TestFlight. Verifica alta, cambio de idioma, logout, permiso revocado, worker caído, reintento tras fallo temporal y entrega de importación cacheada (sin push).
+
+## 8. Pruebas de aceptación de la app
 
 1. Login Apple y renovación tras 401; comprobar que ningún secreto del servidor aparece en el bundle.
 2. Perfil, biblioteca y detalle con una cuenta real; conservar biblioteca si falla perfil.
@@ -130,6 +140,7 @@ Comparte URL e idioma mediante App Group `group.com.membri.reciapp`; habilítalo
 6. Share Sheet con app abierta, cerrada y sin sesión.
 7. Red desconectada, HTTP 429/503, entrada inválida y job fallido.
 8. Compra/restauración sandbox con webhook y actualización real de `/v1/me`.
+9. APNs en dispositivo firmado: entrega, idioma, logout y fallback local con worker no disponible.
 
 Para verificar el backend con una sesión de prueba existente, configura `RECIAPP_ACCESS_TOKEN` mediante un mecanismo local seguro y ejecuta:
 
