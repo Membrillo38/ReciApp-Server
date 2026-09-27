@@ -61,6 +61,9 @@ class APNsClient:
             return False
         return True
 
+    def enabled_for_environment(self, environment: str) -> bool:
+        return environment == settings.apns_environment.lower() and self.enabled
+
     def _token(self) -> str:
         now = int(time.time())
         with self._lock:
@@ -89,10 +92,12 @@ class APNsClient:
         recipe_id: UUID,
         language_code: str = "en-US",
     ) -> APNsResult:
-        if not self.enabled:
-            return APNsResult("retry", "configuration_missing")
         if environment not in {"sandbox", "production"}:
             return APNsResult("failed", "invalid_environment")
+        if environment != settings.apns_environment.lower():
+            return APNsResult("failed", "environment_not_configured")
+        if not self.enabled:
+            return APNsResult("retry", "configuration_missing")
         try:
             authorization = self._token()
         except Exception:

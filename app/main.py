@@ -797,7 +797,7 @@ def register_push_device(
     user: AuthUser = Depends(current_user),
 ) -> PushDeviceResponse:
     try:
-        push_ready = apns_client.enabled and recipe_worker_is_healthy()
+        push_ready = apns_client.enabled_for_environment(body.environment) and recipe_worker_is_healthy()
     except Exception as exc:
         logger.warning("push registration readiness failed error_type=%s", type(exc).__name__)
         push_ready = False

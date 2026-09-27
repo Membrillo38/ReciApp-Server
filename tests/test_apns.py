@@ -44,6 +44,7 @@ def _configure_apns(monkeypatch):
     monkeypatch.setattr(settings, "apns_auth_key", "test-key")
     monkeypatch.setattr(settings, "apns_auth_key_b64", "")
     monkeypatch.setattr(settings, "apns_topic", "com.membri.reciapp")
+    monkeypatch.setattr(settings, "apns_environment", "production")
 
 
 def test_provider_token_uses_es256_team_and_key_id(monkeypatch):
@@ -99,6 +100,7 @@ def test_provider_token_accepts_base64_private_key_secret(monkeypatch):
 
 def test_send_uses_selected_app_language_and_sandbox_endpoint(monkeypatch):
     _configure_apns(monkeypatch)
+    monkeypatch.setattr(settings, "apns_environment", "sandbox")
     client = APNsClient()
     fake = FakeHTTPClient(FakeResponse(200))
     client._client = fake
@@ -176,6 +178,19 @@ def test_send_marks_unregistered_tokens_for_removal(monkeypatch):
     assert result.error_code == "Unregistered"
 
 
+def test_send_rejects_environment_without_matching_key(monkeypatch):
+    _configure_apns(monkeypatch)
+    client = APNsClient()
+    fake = FakeHTTPClient(FakeResponse(200))
+    client._client = fake
+
+    result = client.send(token="b" * 64, environment="sandbox", job_id=uuid4(), recipe_id=uuid4())
+
+    assert result.status == "failed"
+    assert result.error_code == "environment_not_configured"
+    assert fake.call is None
+
+
 def test_send_respects_apns_retry_after(monkeypatch):
     _configure_apns(monkeypatch)
     client = APNsClient()
@@ -190,7 +205,7 @@ def test_send_respects_apns_retry_after(monkeypatch):
 
 def test_registration_falls_back_when_durable_worker_is_not_healthy(monkeypatch):
     deleted = []
-    monkeypatch.setattr(main, "apns_client", SimpleNamespace(enabled=True))
+    monkeypatch.setattr(main, "apns_client", SimpleNamespace(enabled_for_environment=lambda _environment: True))
     monkeypatch.setattr(main, "recipe_worker_is_healthy", lambda: False)
     monkeypatch.setattr(main, "upsert_push_device", lambda **_kwargs: pytest.fail("must not register device"))
     monkeypatch.setattr(main, "delete_push_device", lambda **kwargs: deleted.append(kwargs))
@@ -199,6 +214,29 @@ def test_registration_falls_back_when_durable_worker_is_not_healthy(monkeypatch)
 
     response = main.register_push_device(
         PushDeviceRequest(token=token, environment="production", language="es-ES"),
+        user,
+    )
+
+    assert response.registered is False
+    assert response.push_enabled is False
+    assert deleted == [{"user_id": user.id, "token": token}]
+
+
+def test_registration_falls_back_for_environment_without_apns_key(monkeypatch):
+    deleted = []
+    monkeypatch.setattr(
+        main,
+        "apns_client",
+        SimpleNamespace(enabled_for_environment=lambda environment: environment == "production"),
+    )
+    monkeypatch.setattr(main, "recipe_worker_is_healthy", lambda: True)
+    monkeypatch.setattr(main, "upsert_push_device", lambda **_kwargs: pytest.fail("must not register sandbox token"))
+    monkeypatch.setattr(main, "delete_push_device", lambda **kwargs: deleted.append(kwargs))
+    user = AuthUser(id=uuid4(), email=None, display_name=None, is_pro=False, pro_expires_at=None)
+    token = "e" * 64
+
+    response = main.register_push_device(
+        PushDeviceRequest(token=token, environment="sandbox", language="en-US"),
         user,
     )
 

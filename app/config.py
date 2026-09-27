@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     apns_auth_key: str = Field(default="", repr=False)
     apns_auth_key_b64: str = Field(default="", repr=False)
     apns_topic: str = "com.membri.reciapp"
+    apns_environment: str = "production"
     trusted_proxy_ips: str = ""
     rate_limit_per_ip_per_minute: int = 90
     rate_limit_per_user_per_minute: int = 60
