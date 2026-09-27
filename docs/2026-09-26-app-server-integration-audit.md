@@ -118,7 +118,7 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Migración 011 aplicada después del backup verificado. RLS activo en 18 tablas. Se creó `reciapp_runtime` sin `SUPERUSER` ni `BYPASSRLS`, con grants de tablas, secuencias, funciones y privilegios por defecto; API y worker usan este rol. El proveedor impide quitar `SUPERUSER` al rol bootstrap `reciapp`, así que ese rol queda fuera de los servicios runtime.
 - `WORKER_ENABLED=true`; el contenedor `reciapp-worker` está arriba y escribe heartbeat fresco. API `/health` y `/ready` devolvieron 200.
 - Smoke test desde la conexión real de la API: `current_user=reciapp_runtime`; contexto de usuario aleatorio vio cero perfiles y trabajos; contexto `service` vio el heartbeat del worker.
-- APNs permanece apagado. La revisión automática bloqueó la transferencia de la clave privada `.p8`; falta autorización explícita para la transferencia exacta al secreto protegido del VPS. La entitlements de iOS está presente, pero la entrega no se verificó.
+- APNs permanece apagado. Tras la autorización del usuario, probé la clave `.p8` en APNs con un token ficticio que no puede recibir una notificación. La firma local fue válida, pero Apple respondió `InvalidProviderToken`; retiré la clave del VPS y no hubo filas en el outbox. Hace falta una clave APNs válida y confirmar su Team ID. La entitlements de iOS está presente, pero la entrega no se verificó.
 - No fue posible probar Apple login, Pro, importación o notificaciones en un iPhone: este host no tiene identidad de firma válida ni iPhone conectado. El simulador tampoco completó ejecución real en esta sesión.
 
 ## Siguiente orden de aceptación

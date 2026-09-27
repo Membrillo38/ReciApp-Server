@@ -63,6 +63,6 @@
 - Consumes: valid APNs team/key/topic and app push entitlement.
 - Produces: localized APNs delivery and visible recipe-ready notification on a signed iPhone build.
 
-- [ ] Confirm local `.p8` is an APNs service key and topic matches `com.membri.reciapp`. Transfer to the VPS was blocked by automatic approval review; explicit approval for that exact private-key transfer is pending.
+- [ ] Confirm an APNs-valid `.p8` key and topic `com.membri.reciapp`. The authorized candidate key signed locally, but Apple returned `InvalidProviderToken` on a dummy-token probe; the key was removed from the VPS and APNs remains disabled pending a valid key/Team ID confirmation.
 - [ ] Enable APNs on API and worker, then register a device and verify delivery.
 - [ ] Run signed-device login, import, Pro restore, and notification acceptance checks. Current host has no valid Apple signing identity or connected iPhone, so this remains unverified.
