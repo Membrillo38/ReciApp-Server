@@ -83,11 +83,6 @@ def test_rich_captions_skip_audio_and_local_whisper(monkeypatch):
     )
     monkeypatch.setattr(
         pipeline,
-        "local_transcript",
-        lambda *a, **k: pytest.fail("local whisper must not run"),
-    )
-    monkeypatch.setattr(
-        pipeline,
         "download_video_frames",
         lambda *a, **k: pytest.fail("vision must not run when captions complete"),
     )

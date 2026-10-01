@@ -76,7 +76,6 @@ def test_complete_description_skips_stt_and_vision(monkeypatch):
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "youtube_transcript", lambda url: pytest.fail("should use existing captions"))
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: pytest.fail("no audio when complete"))
-    monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: pytest.fail("no local stt"))
     monkeypatch.setattr(pipeline, "rotate_transcript", lambda *a, **k: pytest.fail("no openai stt"))
     monkeypatch.setattr(pipeline, "download_video_frames", lambda *a, **k: pytest.fail("no vision"))
     monkeypatch.setattr(pipeline, "build_recipe", fake_build)
@@ -96,7 +95,7 @@ def test_complete_description_skips_stt_and_vision(monkeypatch):
     assert settled[-1]["status"] == "settled"
 
 
-def test_local_stt_success_skips_openai_transcribe_and_vision(monkeypatch, tmp_path):
+def test_openai_stt_transcribes_and_skips_vision_when_complete(monkeypatch, tmp_path):
     import app.pipeline as pipeline
     from app.extract import MediaInfo
 
@@ -113,7 +112,7 @@ def test_local_stt_success_skips_openai_transcribe_and_vision(monkeypatch, tmp_p
         audio_path=None,
         media_id="2",
     )
-    calls = {"local": 0, "openai": 0, "vision": 0, "build": 0}
+    calls = {"openai": 0, "vision": 0, "build": 0}
     recipe_id = uuid4()
 
     def fake_build(**kwargs):
@@ -127,19 +126,18 @@ def test_local_stt_success_skips_openai_transcribe_and_vision(monkeypatch, tmp_p
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: audio)
 
-    def fake_local(path):
-        calls["local"] += 1
+    def fake_openai(path, **kwargs):
+        calls["openai"] += 1
         return "whisk three eggs with butter then cook gently"
 
-    def fake_rotate(path, *, local_fn, **kwargs):
-        return local_fn(path), "local"
+    def fake_rotate(path, **kwargs):
+        return fake_openai(path), "openai"
 
     def fake_frames(*a, **k):
         calls["vision"] += 1
         raise AssertionError("vision should not run")
 
     monkeypatch.setattr(pipeline, "rotate_transcript", fake_rotate)
-    monkeypatch.setattr(pipeline, "local_transcript", fake_local)
     monkeypatch.setattr(pipeline, "download_video_frames", fake_frames)
     monkeypatch.setattr(pipeline, "build_recipe", fake_build)
     monkeypatch.setattr(pipeline, "choose_video_cover_url", lambda *a, **k: None)
@@ -153,8 +151,7 @@ def test_local_stt_success_skips_openai_transcribe_and_vision(monkeypatch, tmp_p
 
     pipeline.run_extract_job(uuid4(), uuid4(), media.webpage_url, "tiktok:2", "en-US")
 
-    assert calls["local"] == 1
-    assert calls["openai"] == 0
+    assert calls["openai"] == 1
     assert calls["vision"] == 0
     assert calls["build"] >= 2
 
@@ -189,7 +186,6 @@ def test_openai_stt_used_when_local_empty_then_no_vision_if_complete(monkeypatch
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "youtube_transcript", lambda url: None)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: audio)
-    monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: None)
 
     def fake_openai(*a, **k):
         calls["openai"] += 1
@@ -366,7 +362,6 @@ def test_incomplete_after_all_stages_errors_without_upsert(monkeypatch, tmp_path
     monkeypatch.setattr(pipeline, "fetch_tiktok_slides", lambda url: None)
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: audio)
-    monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: None)
     monkeypatch.setattr(pipeline, "rotate_transcript", lambda *a, **k: ("follow for more", "openai"))
     monkeypatch.setattr(
         pipeline,
