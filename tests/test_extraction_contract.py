@@ -807,7 +807,6 @@ def test_tiktok_video_without_caption_uses_three_bounded_frames(monkeypatch, tmp
     monkeypatch.setattr(pipeline, "fetch_tiktok_slides", lambda url: None)
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: None)
-    monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: None)
     monkeypatch.setattr(
         pipeline,
         "download_video_frames",
@@ -1397,7 +1396,6 @@ def test_tiktok_spoken_caption_still_ocrs_on_screen_overlays(monkeypatch, tmp_pa
     monkeypatch.setattr(pipeline, "fetch_tiktok_slides", lambda url: None)
     monkeypatch.setattr(pipeline, "fetch_media_info", lambda url: media)
     monkeypatch.setattr(pipeline, "download_audio", lambda *a, **k: None)
-    monkeypatch.setattr(pipeline, "local_transcript", lambda *a, **k: None)
 
     def fake_download(*args, **kwargs):
         downloads.append(kwargs)

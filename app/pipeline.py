@@ -64,7 +64,6 @@ from app.translation_cache import (
 )
 from app.tiktok_slides import SlideInfo, fetch_tiktok_slides
 from app.transcript import (
-    local_transcript,
     ocr_one_slide,
     ocr_video_frames,
     youtube_transcript,
@@ -321,7 +320,7 @@ def _run_extract_job(job_id: UUID, user_id: UUID, url: str, url_norm: str, langu
                 ):
                     raise ExtractError(RECIPE_UNDETERMINED_ERROR)
 
-                # Stage 2–3: remote STT rotation → local (if few jobs) → OpenAI.
+                # Stage 2–3: OpenAI STT only.
                 # Audio only when recipe still incomplete.
                 if recipe is None:
                     try:
@@ -342,7 +341,6 @@ def _run_extract_job(job_id: UUID, user_id: UUID, url: str, url_norm: str, langu
                                 if duration_seconds
                                 else None,
                                 language_code=language_code,
-                                local_fn=local_transcript,
                             )
                             transcript = _merge_evidence(transcript, spoken)
                             recipe = try_build(transcript, video_text)

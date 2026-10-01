@@ -21,9 +21,6 @@ from app.tiktok_slides import MAX_CAROUSEL_SLIDES, SlideInfo, download_image_b64
 
 logger = logging.getLogger(__name__)
 
-_local_whisper_model = None
-
-
 def youtube_transcript(url: str) -> str | None:
     video_id = youtube_video_id(url)
     if not video_id:
@@ -40,45 +37,6 @@ def youtube_transcript(url: str) -> str | None:
     parts = [entry.get("text", "").strip() for entry in fetched if entry.get("text")]
     text = " ".join(parts).strip()
     return text or None
-
-
-def local_transcript(audio_path: Path) -> str | None:
-    """Free/local STT via faster-whisper tiny. Soft-fails to None."""
-    try:
-        from faster_whisper import WhisperModel
-    except Exception as exc:
-        logger.warning(
-            "extract stage=local_transcribe_fallback error_type=%s",
-            type(exc).__name__,
-        )
-        return None
-
-    global _local_whisper_model
-    try:
-        if _local_whisper_model is None:
-            _local_whisper_model = WhisperModel(
-                settings.local_whisper_model,
-                device="cpu",
-                compute_type="int8",
-            )
-        segments, _info = _local_whisper_model.transcribe(
-            str(audio_path),
-            beam_size=1,
-            vad_filter=True,
-        )
-        parts: list[str] = []
-        for segment in segments:
-            text = (getattr(segment, "text", None) or "").strip()
-            if text:
-                parts.append(text)
-        merged = " ".join(parts).strip()
-        return merged or None
-    except Exception as exc:
-        logger.warning(
-            "extract stage=local_transcribe_fallback error_type=%s",
-            type(exc).__name__,
-        )
-        return None
 
 
 def whisper_transcript(audio_path: Path, *, duration_seconds: float | None = None) -> str:

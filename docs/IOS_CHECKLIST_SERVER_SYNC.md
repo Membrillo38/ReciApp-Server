@@ -64,7 +64,7 @@ El servidor ahora devuelve `error_code`; la app muestra el mensaje localizado, o
 1. **Caption completa** (TikTok/IG) → OK sin tardar mucho (sin OCR).
 2. **“Recipe in bio”** → error bio, **sin** gasto raro / sin spinner eterno.
 3. **Carrusel** con caption incompleta → puede OCR slides; si falla mid-way, mensaje carousel incompleto.
-4. **Video sin caption** → local STT primero; si local habla bastante, no debería ir a OpenAI STT.
+4. **Video sin caption** → OpenAI STT; no hay transcripción local ni proveedores STT alternativos.
 5. **Mismo enlace otra vez** → cache hit, no cuenta cuota Free.
 6. Free: 3 miss nuevos en el año → paywall. El 4.º falla con `FREE_YEARLY_LIMIT`.
 7. Pro: tras mucho uso OpenAI del mes (budget = precio×0.60) → `PRO_FAIR_USE_LIMIT`, no paywall de compra.

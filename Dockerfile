@@ -6,12 +6,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
-ENV HF_HOME=/app/models
-ENV HUGGINGFACE_HUB_CACHE=/app/models
-
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
