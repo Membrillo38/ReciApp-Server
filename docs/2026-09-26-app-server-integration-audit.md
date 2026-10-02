@@ -351,3 +351,11 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - `/ready` ahora rechazará rol con bypass RLS, permisos DB incompletos, worker vivo con modo durable apagado, APNs sin worker/credenciales válidas y certificado Apple ausente/ilegible. Añadí migración 014 para validar/otorgar permisos al rol runtime y tests de regresión.
 - Apliqué migraciones 001–014 en Postgres temporal local con `reciapp_runtime` no-superuser/no-BYPASSRLS; `/ready` local pasó. Suite server: `300 passed, 2 skipped`; compilación Python y `git diff --check` pasan. Harness iOS previo: `51 passed`; Swift modificado parsea. Build app nuevo no verificado por SwiftPM; producción y iPhone intactos.
 - Aceptación producción/iPhone sigue pendiente: crear/usar runtime role y aplicar 012–014, poner root Apple PEM en API y worker, cambiar `DATABASE_URL`, alinear imagen/`WORKER_ENABLED`, desplegar API/worker, confirmar `/ready`, y probar restore/lista/recetas/APNs en iPhone. No se desplegó ni publicó.
+
+### Revalidación tras publicar el fix de restore — 2026-10-02
+
+- Commit `d39fd38` quedó publicado en `codex/reciapp-server-integration`; servidor limpio y suite actual: `300 passed, 2 skipped`.
+- Probe público después del push: `/health` HTTP 200 y `GET /v1/me/subscription/restore` HTTP 404. Confirma que Coolify todavía sirve una imagen sin la ruta; el push de la rama no desplegó producción. No se envió token ni se leyó cuerpo de respuesta.
+- Código iOS: `restoreProAccess()` se ejecuta desde los botones de Inicio y Ajustes, muestra progreso y maneja fallo del servidor; cliente y servidor comparten 16 rutas y lista de productos mediante `test_ios_api_contract.py`. No se pudo reproducir un toque real en iPhone.
+- Verificación iOS actual: `ClientStateHarness` `51 passed`; parseo Swift, `plutil` y JSON de localizaciones pasan. Build Release para Simulator falla antes de compilar: `Could not resolve package dependencies`; no hay build distribuible demostrado.
+- Trabajo cliente sigue modificado localmente y sin commit/push; la aceptación de extremo a extremo sigue pendiente de publicar también la app, aplicar migraciones 012–014, configurar `APPLE_ROOT_CA_PEM` y `DATABASE_URL` con `reciapp_runtime`, desplegar API/worker y probar compra/restauración/biblioteca/notificaciones en dispositivo.
