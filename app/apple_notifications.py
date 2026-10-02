@@ -12,6 +12,15 @@ from psycopg.errors import UniqueViolation
 from app.config import settings
 from app.db import execute_returning, fetch_one
 
+_RECIAPP_SUBSCRIPTION_PRODUCTS = frozenset({
+    "reciapp_wk_699", "reciapp_wk_999", "reciapp_wk_1299",
+    "reciapp_an_3499_t3", "reciapp_an_3499_t7",
+    "reciapp_an_4499_t3", "reciapp_an_4499_t7",
+    "reciapp_an_5999_t3", "reciapp_an_5999_t7",
+    # Active subscriptions from the pre-experiment catalog remain restorable.
+    "reciapp_wk", "reciapp_an_3trial",
+})
+
 
 def _b64(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
@@ -20,10 +29,17 @@ def _b64(value: str) -> bytes:
 def _verify_signature(public_key, signature: bytes, message: bytes, algorithm) -> None:
     from cryptography.hazmat.primitives import asymmetric, hashes
     from cryptography.hazmat.primitives.asymmetric import ec, padding
+    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
     if isinstance(public_key, asymmetric.rsa.RSAPublicKey):
         public_key.verify(signature, message, padding.PKCS1v15(), algorithm)
     elif isinstance(public_key, ec.EllipticCurvePublicKey):
+        # JWS ES256 encodes ECDSA as fixed-width R || S; cryptography expects DER.
+        width = (public_key.curve.key_size + 7) // 8
+        if len(signature) == 2 * width:
+            r = int.from_bytes(signature[:width], "big")
+            s = int.from_bytes(signature[width:], "big")
+            signature = encode_dss_signature(r, s)
         public_key.verify(signature, message, ec.ECDSA(algorithm))
     else:
         raise ValueError("Unsupported Apple certificate key")
@@ -31,7 +47,8 @@ def _verify_signature(public_key, signature: bytes, message: bytes, algorithm) -
 
 def verify_jws(compact: str) -> dict:
     """Verify Apple JWS signature and certificate chain; never trust plain JSON."""
-    if compact.count(".") != 2 or not settings.apple_root_ca_pem:
+    root_pem = settings.apple_root_ca_pem.replace("\\n", "\n").strip()
+    if compact.count(".") != 2 or not root_pem:
         raise ValueError("Apple JWS verification is not configured")
     try:
         from cryptography import x509
@@ -46,14 +63,19 @@ def verify_jws(compact: str) -> dict:
         raise ValueError("Unsupported Apple JWS")
 
     chain = [x509.load_der_x509_certificate(base64.b64decode(value)) for value in header["x5c"]]
-    root = x509.load_pem_x509_certificate(settings.apple_root_ca_pem.encode("utf-8"))
+    root = x509.load_pem_x509_certificate(root_pem.encode("utf-8"))
     if chain[-1].fingerprint(hashes.SHA256()) != root.fingerprint(hashes.SHA256()):
         # Apple may omit the root from x5c; verify the final intermediate against
         # the configured root instead of accepting an arbitrary CA.
         _verify_signature(root.public_key(), chain[-1].signature, chain[-1].tbs_certificate_bytes, chain[-1].signature_hash_algorithm)
     for child, issuer in zip(chain, chain[1:]):
         _verify_signature(issuer.public_key(), child.signature, child.tbs_certificate_bytes, child.signature_hash_algorithm)
-    _verify_signature(chain[0].public_key(), _b64(encoded_signature), f"{encoded_header}.{encoded_payload}".encode("ascii"), hashes.SHA256())
+    _verify_signature(
+        chain[0].public_key(),
+        _b64(encoded_signature),
+        f"{encoded_header}.{encoded_payload}".encode("ascii"),
+        hashes.SHA256(),
+    )
     return payload
 
 
@@ -205,4 +227,81 @@ def process_signed_notification(signed_payload: str) -> dict:
         "ok": True, "event_id": notification_id, "updated": outcome == "updated",
         "is_pro": update["is_pro"] if outcome == "updated" else None,
         **({"skipped": outcome} if outcome != "updated" else {}),
+    }
+
+
+def restore_subscription_for_user(user_uuid: UUID, signed_transactions: list[str]) -> dict:
+    """Verify StoreKit signed transactions before reconciling an authenticated restore."""
+    if settings.maintenance_mode:
+        raise HTTPException(status_code=503, detail="Maintenance in progress. Retry.", headers={"Retry-After": "30"})
+    if not settings.apple_root_ca_pem:
+        raise HTTPException(status_code=503, detail="Apple transaction verification unavailable")
+
+    now = datetime.now(timezone.utc)
+    valid: list[tuple[datetime, str, datetime]] = []
+    for compact in signed_transactions:
+        transaction = verify_jws(compact)
+        if transaction.get("bundleId") != settings.apple_bundle_id:
+            raise HTTPException(status_code=400, detail="Transaction belongs to another application")
+        if transaction.get("environment") != settings.apple_environment:
+            raise HTTPException(status_code=400, detail="Transaction belongs to another environment")
+        product_id = transaction.get("productId")
+        if not isinstance(product_id, str) or product_id not in _RECIAPP_SUBSCRIPTION_PRODUCTS:
+            continue
+        app_account_token = transaction.get("appAccountToken")
+        if app_account_token:
+            try:
+                if UUID(str(app_account_token)) != user_uuid:
+                    raise HTTPException(status_code=403, detail="Transaction belongs to another account")
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid transaction account token") from None
+        transaction_id = transaction.get("transactionId")
+        purchase_ms = transaction.get("purchaseDate")
+        expiry_ms = transaction.get("expiresDate")
+        if not isinstance(transaction_id, str) or not transaction_id.isdigit():
+            continue
+        if isinstance(purchase_ms, bool) or not isinstance(purchase_ms, (int, float)):
+            continue
+        if isinstance(expiry_ms, bool) or not isinstance(expiry_ms, (int, float)):
+            continue
+        try:
+            purchased_at = datetime.fromtimestamp(purchase_ms / 1000, tz=timezone.utc)
+            expires_at = datetime.fromtimestamp(expiry_ms / 1000, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            continue
+        if expires_at <= now or transaction.get("revocationDate") is not None:
+            continue
+        valid.append((purchased_at, transaction_id, expires_at))
+
+    if valid:
+        # A restore presents the user's current StoreKit entitlements. Its
+        # transaction's purchaseDate can be weeks or months older than a more
+        # recent server notification (for example, a stale expiration event).
+        # Ordering the reconciliation by purchaseDate would then discard this
+        # verified active entitlement as out of order. Use the restore time as
+        # the reconciliation event time; the signed transaction still supplies
+        # the authoritative product and expiry, and revoked/expired entries
+        # were filtered above.
+        _, transaction_id, expires_at = max(valid)
+        _apply_notification_to_profile(
+            user_uuid,
+            "apple-restore:" + transaction_id,
+            now,
+            {"is_pro": True, "pro_expires_at": expires_at.isoformat()},
+        )
+
+    profile = fetch_one(
+        "select is_pro, pro_expires_at, deleted_at from profiles where id = %s limit 1",
+        (user_uuid,),
+    )
+    if not profile or profile.get("deleted_at"):
+        raise HTTPException(status_code=403, detail="Account unavailable")
+    expires_at = profile.get("pro_expires_at")
+    restored = bool(profile.get("is_pro")) and (
+        not expires_at or datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")) > now
+    )
+    return {
+        "restored": restored,
+        "is_pro": restored,
+        "pro_expires_at": str(expires_at) if expires_at else None,
     }

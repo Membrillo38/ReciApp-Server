@@ -35,7 +35,7 @@ from app.auth import (
     require_api_key,
 )
 from app.auth_tokens import create_access_token, create_refresh_token, revoke_refresh_token, rotate_refresh_token
-from app.apple_notifications import process_signed_notification
+from app.apple_notifications import process_signed_notification, restore_subscription_for_user
 from app.apns import apns_client
 from app.config import settings
 from app.dashboard_routes import router as dashboard_router
@@ -64,11 +64,16 @@ from app.models import (
     QueuedJobsResponse,
     RecipeListResponse,
     RecipePublic,
+    SubscriptionRestoreRequest,
+    SubscriptionRestoreResponse,
+    UserLibraryStateResponse,
+    UserLibraryStateUpdateRequest,
 )
 from app.pipeline import run_extract_job, run_translation_job
 from app.quota import assert_can_extract, get_quota, record_usage
 from app.job_guard import claim as claim_job, release as release_job, try_claim as try_claim_job
 from app.job_errors import STALE_JOB, job_error_code, localize_job_error
+from app.library_state import get_user_library_state, save_user_library_state
 from app.localization import normalize_language
 from app.observability import AUTH_PATHS, auth_error, init_sentry
 from app.security import (
@@ -696,7 +701,11 @@ def revoke_stored_apple_authorization(user_id: UUID) -> None:
 def _purge_account(user_id: UUID) -> None:
     revoke_stored_apple_authorization(user_id)
     try:
-        delete_account_data(user_id)
+        # Account cleanup spans service-only tables (including library state).
+        # Run its single transaction with the same explicit service context as
+        # library-state writes so forced RLS cannot silently retain user data.
+        with db_context(actor="service"):
+            delete_account_data(user_id)
     except Exception as exc:
         logger.error("account deletion transaction failed error_type=%s", type(exc).__name__)
         raise HTTPException(
@@ -789,6 +798,66 @@ def me(user: AuthUser = Depends(current_user)) -> MeResponse:
         free_remaining=q.free_remaining,
         pro_remaining_cents=q.pro_remaining_cents if user.is_pro else None,
     )
+
+
+@app.post("/v1/me/subscription/restore", response_model=SubscriptionRestoreResponse)
+def restore_subscription(
+    body: SubscriptionRestoreRequest,
+    user: AuthUser = Depends(current_user),
+) -> SubscriptionRestoreResponse:
+    try:
+        with db_context(actor="service"):
+            result = restore_subscription_for_user(user.id, body.signed_transactions)
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Apple transaction") from None
+    except Exception:
+        raise HTTPException(status_code=503, detail="Subscription restore temporarily unavailable", headers={"Retry-After": "1"}) from None
+    return SubscriptionRestoreResponse(**result)
+
+
+@app.get("/v1/me/library-state", response_model=UserLibraryStateResponse)
+def get_library_state(user: AuthUser = Depends(current_user)) -> UserLibraryStateResponse:
+    try:
+        with db_context(actor="service"):
+            result = get_user_library_state(user.id)
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Library state temporarily unavailable",
+            headers={"Retry-After": "1"},
+        ) from None
+    return UserLibraryStateResponse(**result)
+
+
+@app.put("/v1/me/library-state", response_model=UserLibraryStateResponse)
+def put_library_state(
+    body: UserLibraryStateUpdateRequest,
+    user: AuthUser = Depends(current_user),
+) -> UserLibraryStateResponse:
+    try:
+        with db_context(actor="service"):
+            result = save_user_library_state(
+                user.id,
+                expected_revision=body.revision,
+                snapshot=body.snapshot,
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Library state temporarily unavailable",
+            headers={"Retry-After": "1"},
+        ) from None
+    if result is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LIBRARY_STATE_CONFLICT",
+                "message": "Library state changed on another device. Refresh before retrying.",
+            },
+        )
+    return UserLibraryStateResponse(**result)
 
 
 @app.put("/v1/me/push-device", response_model=PushDeviceResponse)

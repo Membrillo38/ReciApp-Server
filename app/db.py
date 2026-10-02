@@ -137,6 +137,58 @@ async def probe_postgres() -> None:
     query = f"""
         select
           exists (
+            select 1 from pg_roles
+             where rolname = current_user
+               and (rolsuper or rolbypassrls)
+          ) as runtime_role_bypasses_rls,
+          (
+            has_schema_privilege(current_user, 'public', 'USAGE')
+            and not exists (
+              select 1
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+               where n.nspname = 'public'
+                 and c.relkind in ('r', 'p')
+                 and not (
+                   has_table_privilege(current_user, c.oid, 'SELECT')
+                   and has_table_privilege(current_user, c.oid, 'INSERT')
+                   and has_table_privilege(current_user, c.oid, 'UPDATE')
+                   and has_table_privilege(current_user, c.oid, 'DELETE')
+                 )
+            )
+            and not exists (
+              select 1
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+               where n.nspname = 'public'
+                 and c.relkind = 'S'
+                 and not (
+                   has_sequence_privilege(current_user, c.oid, 'USAGE')
+                   and has_sequence_privilege(current_user, c.oid, 'SELECT')
+                   and has_sequence_privilege(current_user, c.oid, 'UPDATE')
+                 )
+            )
+            and to_regprocedure('public.app_is_service()') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.app_is_service()'), 'EXECUTE')
+            and to_regprocedure('public.app_is_auth()') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.app_is_auth()'), 'EXECUTE')
+            and to_regprocedure('public.app_user_id()') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.app_user_id()'), 'EXECUTE')
+            and to_regprocedure('public.reserve_api_spend(uuid,uuid,numeric,numeric,numeric,numeric)') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.reserve_api_spend(uuid,uuid,numeric,numeric,numeric,numeric)'), 'EXECUTE')
+            and to_regprocedure('public.settle_api_spend(uuid,numeric,text)') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.settle_api_spend(uuid,numeric,text)'), 'EXECUTE')
+            and to_regprocedure('public.claim_next_extract_job(integer)') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.claim_next_extract_job(integer)'), 'EXECUTE')
+            and to_regprocedure('public.unregister_push_device_for_refresh(text,text)') is not null
+            and has_function_privilege(current_user, to_regprocedure('public.unregister_push_device_for_refresh(text,text)'), 'EXECUTE')
+          ) as runtime_db_privileges,
+          exists (
+            select 1 from pg_roles
+             where rolname = current_user
+               and (rolsuper or rolbypassrls)
+          ) as runtime_role_bypasses_rls,
+          exists (
             select 1 from information_schema.columns
              where table_schema = 'public'
                and table_name = 'extract_jobs'
@@ -177,6 +229,39 @@ async def probe_postgres() -> None:
                    'rotated_token_hash'
                ])
           ) as refresh_replay_columns,
+          (
+            select count(*) = 5
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'user_library_state'
+               and column_name = any(array['user_id', 'revision', 'snapshot', 'history', 'updated_at'])
+          ) as library_state_columns,
+          (
+            exists (
+              select 1 from information_schema.columns
+               where table_schema = 'public'
+                 and table_name = 'user_library_state'
+                 and column_name = 'history'
+                 and udt_name = 'jsonb'
+                 and is_nullable = 'NO'
+            )
+            and exists (
+              select 1 from pg_constraint
+               where conrelid = to_regclass('public.user_library_state')
+                 and conname = 'user_library_state_history_is_array'
+                 and convalidated
+            )
+          ) as library_state_history,
+          (
+            select coalesce(relrowsecurity and relforcerowsecurity, false)
+              from pg_class
+             where oid = to_regclass('public.user_library_state')
+          ) as library_state_rls,
+          exists (
+            select 1 from pg_policy
+             where polrelid = to_regclass('public.user_library_state')
+               and polname = 'user_library_state_service'
+          ) as library_state_service_policy,
           (
             select count(*) = 5
               from information_schema.columns
@@ -223,8 +308,38 @@ async def probe_postgres() -> None:
     if not row.get("refresh_replay_columns"):
         raise ValueError("Required refresh replay schema is missing")
     if not all(row.get(key) for key in (
+        "library_state_columns", "library_state_rls", "library_state_service_policy"
+    )):
+        raise ValueError("Required user library state schema is missing")
+    if not row.get("library_state_history"):
+        raise ValueError("Required user library state history migration is missing")
+    if not all(row.get(key) for key in (
         "push_device_columns", "push_delivery_columns", "push_completion_trigger", "push_logout_function"
     )):
         raise ValueError("Required push notification schema is missing")
+    if row.get("runtime_role_bypasses_rls"):
+        raise ValueError("Database role bypasses row-level security")
+    if not row.get("runtime_db_privileges"):
+        raise ValueError("Runtime database role has incomplete privileges")
+    root_pem = settings.apple_root_ca_pem.replace("\\n", "\n").strip()
+    if not root_pem:
+        raise ValueError("Apple transaction verification certificate is missing")
+    try:
+        from cryptography import x509
+
+        x509.load_pem_x509_certificate(root_pem.encode("utf-8"))
+    except Exception:
+        raise ValueError("Apple transaction verification certificate is invalid") from None
+    if row.get("runtime_role_bypasses_rls"):
+        raise ValueError("Database role bypasses row-level security")
+    if not settings.worker_enabled and row.get("worker_heartbeat_recent"):
+        raise ValueError("Recipe worker is running while durable worker mode is disabled")
+    if settings.apns_enabled and not settings.worker_enabled:
+        raise ValueError("APNs requires durable worker mode")
+    if settings.apns_enabled:
+        from app.apns import APNsClient
+
+        if not APNsClient().enabled:
+            raise ValueError("APNs is enabled but its credentials are invalid")
     if settings.worker_enabled and not row.get("worker_heartbeat_recent"):
         raise ValueError("Recipe worker heartbeat is stale")

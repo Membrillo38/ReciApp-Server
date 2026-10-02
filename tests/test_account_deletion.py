@@ -39,11 +39,16 @@ def test_account_data_deletion_is_atomic_and_keeps_usage_history(monkeypatch):
     monkeypatch.setattr(store, "get_conn", fake_get_conn)
     store.delete_account_data(uuid4())
     normalized = [sql for sql, _params in sqls]
+    assert normalized[0].startswith("update profiles")
     assert any(sql.startswith("delete from user_recipes") for sql in normalized)
+    assert any(sql.startswith("delete from user_library_state") for sql in normalized)
     assert any(sql.startswith("update extract_jobs") for sql in normalized)
     assert any(sql.startswith("delete from extract_job_access") for sql in normalized)
     assert any(sql.startswith("update auth_refresh_tokens") for sql in normalized)
     assert any(sql.startswith("update profiles") for sql in normalized)
+    assert normalized.index(next(sql for sql in normalized if sql.startswith("update profiles"))) < normalized.index(
+        next(sql for sql in normalized if sql.startswith("delete from user_library_state"))
+    )
     assert not any("usage_events" in sql for sql in normalized)
     assert len(exits) == 0
 
@@ -93,6 +98,22 @@ def test_delete_me_revokes_apple_then_runs_atomic_database_cleanup():
     assert "current_user_allow_closed" in delete_body
     assert "_purge_account" in source.split("def admin_delete_user", 1)[1].split("def admin_list_recipes", 1)[0]
     assert callable(delete_me) and callable(admin_delete_user) and callable(store.delete_account_data)
+
+
+def test_account_purge_uses_service_rls_context(monkeypatch):
+    actors = []
+    monkeypatch.setattr(main, "revoke_stored_apple_authorization", lambda _uid: None)
+    monkeypatch.setattr(main, "delete_account_data", lambda _uid: actors.append("delete"))
+
+    @contextmanager
+    def fake_db_context(*, actor, user_id=""):
+        actors.append(actor)
+        yield
+
+    monkeypatch.setattr(main, "db_context", fake_db_context)
+    main._purge_account(uuid4())
+
+    assert actors == ["service", "delete"]
 
 
 def test_auth_apple_reactivates_closed_profile_for_same_apple_sub():

@@ -24,10 +24,14 @@ _PARTIAL_ES_KEYS = {
     "The server returned an invalid sign-in response. Please try again.",
     "We couldn't save your sign-in. Please try again.",
     "We couldn't create your account. Please try again.",
+    "Restoring purchases...",
+    "No active ReciApp Pro purchase was found for this Apple account.",
+    "We found your purchase, but couldn't confirm Pro access with the server. Try again.",
     "Only HTTPS links can be imported.",
     "This link can't be opened because it doesn't use HTTPS.",
 }
 _PARTIAL_ES_CA_KEYS = {
+    "Refresh",
     "Retry",
     "Free plan: %d recipe(s) per year. Upgrade to Pro.",
     "Pro fair-use limit reached. Try again after %@.",
@@ -48,6 +52,7 @@ _PARTIAL_NOTIFICATIONS = {
     "Open ReciApp to find it in your library.",
     "Notify me when ready",
     "Notifications are off. Your recipe will still appear in your library.",
+    "Remote completion alerts are unavailable. Your recipe will still appear in your library.",
     "Open Settings",
     "Notifications on",
 }
