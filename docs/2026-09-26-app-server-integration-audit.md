@@ -360,7 +360,7 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Verificación iOS actual: `ClientStateHarness` `51 passed`; parseo Swift, `plutil` y JSON de localizaciones pasan. El primer build aislado no resolvió paquetes por DNS; repetí en entorno con red y el Release de Simulator sin firma compiló app y extensión sin avisos. No hay archive firmado ni distribución demostrados.
 - Inspección de artefactos compilados: bundle IDs `com.membri.reciapp` y `com.membri.reciapp.share`; ambos contienen `SentryDSN` vacío y `SentryEnvironment` vacío. Ese build no envía telemetría Sentry.
 - Simulator no arrancó: `CoreSimulatorService connection became invalid` / `Connection refused`; UI, StoreKit y notificaciones no tienen prueba runtime.
-- Trabajo cliente sigue modificado localmente y sin commit/push; la aceptación de extremo a extremo sigue pendiente de publicar también la app, aplicar migraciones 012–014, configurar `APPLE_ROOT_CA_PEM` y `DATABASE_URL` con `reciapp_runtime`, desplegar API/worker y probar compra/restauración/biblioteca/notificaciones en dispositivo.
+- El cliente quedó publicado en `ReciApp-iOS` rama `codex/reciapp-ios-integration`, commit `7ba94a3`; esto publica fuente, no App Store/TestFlight. Aceptación de extremo a extremo sigue pendiente de firmar/distribuir la app, aplicar migraciones 012–014, configurar `APPLE_ROOT_CA_PEM` y `DATABASE_URL` con `reciapp_runtime`, desplegar API/worker y probar compra/restauración/biblioteca/notificaciones en dispositivo.
 
 ### Observabilidad iOS — 2026-10-02
 
