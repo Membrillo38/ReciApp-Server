@@ -359,3 +359,9 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Código iOS: `restoreProAccess()` se ejecuta desde los botones de Inicio y Ajustes, muestra progreso y maneja fallo del servidor; cliente y servidor comparten 16 rutas y lista de productos mediante `test_ios_api_contract.py`. No se pudo reproducir un toque real en iPhone.
 - Verificación iOS actual: `ClientStateHarness` `51 passed`; parseo Swift, `plutil` y JSON de localizaciones pasan. Build Release para Simulator falla antes de compilar: `Could not resolve package dependencies`; no hay build distribuible demostrado.
 - Trabajo cliente sigue modificado localmente y sin commit/push; la aceptación de extremo a extremo sigue pendiente de publicar también la app, aplicar migraciones 012–014, configurar `APPLE_ROOT_CA_PEM` y `DATABASE_URL` con `reciapp_runtime`, desplegar API/worker y probar compra/restauración/biblioteca/notificaciones en dispositivo.
+
+### Observabilidad iOS — 2026-10-02
+
+- `ReciApp` y `ReciAppShare` tienen placeholders `SentryDSN`/`SentryEnvironment` en `Info.plist`; no encontré una configuración versionada de CI/Xcode que inyecte esas variables. `SENTRY_SETUP.md` exige pasarlas al build. El entorno local de esta revisión tampoco las tiene establecidas. Un secreto externo de Xcode Cloud/App Store podría existir, así que la build instalada no se puede declarar activa o inactiva sin inspeccionarla.
+- El entorno no tiene token/organización/proyecto Sentry de solo lectura; no consulté issues ni pude enviar/verificar evento de prueba. El `SENTRY_DSN` del backend no demuestra que la app iOS reporte.
+- Acción pendiente: configurar `SENTRY_DSN` y `SENTRY_ENVIRONMENT=production` en el pipeline real de distribución y verificar un evento de prueba desde build instalada; luego consultar Sentry con acceso read-only para revisar errores reales.
