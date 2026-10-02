@@ -368,3 +368,8 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - `ReciApp` y `ReciAppShare` tienen placeholders `SentryDSN`/`SentryEnvironment` en `Info.plist`; no encontré una configuración versionada de CI/Xcode que inyecte esas variables. `SENTRY_SETUP.md` exige pasarlas al build. Las variables no estaban en el entorno local y los dos artefactos Release comprobados quedaron sin DSN/entorno; la build instalada de TestFlight/App Store sigue sin inspección.
 - El entorno no tiene token/organización/proyecto Sentry de solo lectura; no consulté issues ni pude enviar/verificar evento de prueba. El `SENTRY_DSN` del backend no demuestra que la app iOS reporte.
 - Acción pendiente: configurar `SENTRY_DSN` y `SENTRY_ENVIRONMENT=production` en el pipeline real de distribución y verificar un evento de prueba desde build instalada; luego consultar Sentry con acceso read-only para revisar errores reales.
+
+### Compra en TestFlight — 2026-10-02
+
+- Hallazgo de compatibilidad: el servidor exige que `environment` del JWS coincida exactamente con `APPLE_ENVIRONMENT`, configurado `Production`; webhooks de otro entorno se marcan `wrong_environment`. Apple documenta que TestFlight usa `Sandbox` ([environment de notificaciones](https://developer.apple.com/documentation/appstoreservernotifications/environment)).
+- Inferencia: restore o notificaciones de una compra de TestFlight no activarán Pro en esta API de producción; restore responde 400 y el webhook se ignora. `AppConfig.apiBaseURL` es único, no hay backend de sandbox configurado en el cliente. Esto no afecta compras App Store Production. Confirmar si TestFlight también debe funcionar antes de diseñar aislamiento sandbox para no mezclar compras de prueba con entitlements de producción.
