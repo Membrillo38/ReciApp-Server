@@ -10,6 +10,16 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 from app import db, main
+from app.config import Settings
+
+
+def test_settings_default_to_pinned_apple_root_ca_when_env_is_blank(monkeypatch):
+    monkeypatch.setenv("APPLE_ROOT_CA_PEM", "")
+    configured = Settings(_env_file=None)
+    certificate = x509.load_pem_x509_certificate(configured.apple_root_ca_pem.encode("ascii"))
+    assert certificate.fingerprint(hashes.SHA256()).hex() == (
+        "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179"
+    )
 
 
 def _valid_root_certificate_pem():

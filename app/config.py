@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _bundled_apple_root_ca() -> str:
+    # Public Apple Root CA - G3. Keep the env override for future trust-anchor rotations.
+    path = Path(__file__).resolve().parent / "certs" / "apple-root-ca-g3.pem"
+    try:
+        return path.read_text(encoding="ascii")
+    except OSError:
+        return ""
 
 
 class Settings(BaseSettings):
@@ -85,7 +95,7 @@ class Settings(BaseSettings):
     worker_heartbeat_ttl_seconds: int = Field(default=90, ge=30, le=300)
     max_request_body_bytes: int = 262_144
     webhook_max_age_seconds: int = 7 * 24 * 60 * 60
-    apple_root_ca_pem: str = ""
+    apple_root_ca_pem: str = Field(default_factory=_bundled_apple_root_ca, repr=False)
     apple_bundle_id: str = "com.membri.reciapp"
     apple_environment: str = "Production"
     apple_team_id: str = ""
@@ -105,6 +115,13 @@ class Settings(BaseSettings):
     rate_limit_extract_per_ip_per_minute: int = 7
     rate_limit_extract_per_user_per_minute: int = 5
     rate_limit_extract_daily_per_user: int = 50
+
+    @field_validator("apple_root_ca_pem", mode="before")
+    @classmethod
+    def use_bundled_apple_root_ca_when_unset(cls, value: object) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return _bundled_apple_root_ca()
+        return value
 
     def validate_database(self) -> None:
         """Validate DATABASE_URL shape without logging credentials."""
