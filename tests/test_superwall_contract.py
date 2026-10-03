@@ -13,6 +13,16 @@ def test_superwall_is_configured_and_identified_with_app_user(ios_root: Path):
     assert "SubscriptionService.shared.identify" in auth
 
 
+def test_signed_storekit_restore_is_wired_from_ios_to_server(ios_root: Path):
+    source = Path("app/main.py").read_text(encoding="utf-8")
+    api = (ios_root / "ReciApp/Services/APIClient.swift").read_text(encoding="utf-8")
+    service = (ios_root / "ReciApp/Services/SubscriptionService.swift").read_text(encoding="utf-8")
+    assert '@app.post("/v1/me/subscription/restore"' in source
+    assert 'request("v1/me/subscription/restore", method: "POST"' in api
+    assert "Transaction.currentEntitlements" in service
+    assert "result.jwsRepresentation" in service
+
+
 def test_superwall_webhook_rejects_unsigned_payloads_in_production_path():
     source = Path("app/main.py").read_text(encoding="utf-8")
     assert 'if not settings.superwall_webhook_secret:' in source

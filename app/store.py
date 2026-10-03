@@ -576,9 +576,25 @@ def delete_account_data(user_id: UUID) -> None:
     """Scrub account-owned data and close its sessions atomically."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Lock and close profile first. Library-state writes take the same
+            # row lock, so an in-flight sync either finishes before this
+            # transaction (and is deleted below) or sees the closed profile.
+            cur.execute(
+                """
+                update profiles
+                   set deleted_at = coalesce(deleted_at, now()),
+                       email = null,
+                       display_name = null,
+                       is_pro = false,
+                       pro_expires_at = null
+                 where id = %s
+                """,
+                (user_id,),
+            )
             cur.execute("delete from push_deliveries where user_id = %s", (user_id,))
             cur.execute("delete from push_devices where user_id = %s", (user_id,))
             cur.execute("delete from user_recipes where user_id = %s", (user_id,))
+            cur.execute("delete from user_library_state where user_id = %s", (user_id,))
             cur.execute(
                 """
                 update extract_jobs
@@ -610,18 +626,6 @@ def delete_account_data(user_id: UUID) -> None:
                 update auth_refresh_tokens
                    set revoked_at = coalesce(revoked_at, now())
                  where user_id = %s and revoked_at is null
-                """,
-                (user_id,),
-            )
-            cur.execute(
-                """
-                update profiles
-                   set deleted_at = coalesce(deleted_at, now()),
-                       email = null,
-                       display_name = null,
-                       is_pro = false,
-                       pro_expires_at = null
-                 where id = %s
                 """,
                 (user_id,),
             )

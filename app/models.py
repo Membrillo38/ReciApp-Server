@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
 
 
 class Platform(str, Enum):
@@ -167,6 +169,107 @@ class MeResponse(BaseModel):
     free_limit: int
     free_remaining: int
     pro_remaining_cents: float | None = None
+
+
+class SubscriptionRestoreRequest(BaseModel):
+    # One current entitlement per configured App Store subscription product.
+    # Keep aligned with iOS PricingCatalog and the server product allowlist.
+    signed_transactions: list[str] = Field(min_length=1, max_length=11)
+
+    @field_validator("signed_transactions")
+    @classmethod
+    def _validate_signed_transactions(cls, values: list[str]) -> list[str]:
+        if any(not value or len(value) > 16_384 or value.count(".") != 2 for value in values):
+            raise ValueError("Invalid signed transaction")
+        return list(dict.fromkeys(values))
+
+
+class SubscriptionRestoreResponse(BaseModel):
+    restored: bool
+    is_pro: bool
+    pro_expires_at: str | None = None
+
+
+def _normalize_library_snapshot(
+    value: dict[str, Any], *, allow_legacy_empty: bool = False
+) -> dict[str, Any]:
+    snapshot = dict(value)
+    if allow_legacy_empty and not snapshot:
+        snapshot["schema_version"] = 1
+    if type(snapshot.get("schema_version")) is not int or snapshot["schema_version"] != 1:
+        raise ValueError("Unsupported library snapshot version")
+    snapshot.setdefault("folders", None)
+    snapshot.setdefault("shopping_list", [])
+    snapshot.setdefault("preferences", None)
+    snapshot.setdefault("cooking_progress", {})
+    if snapshot["folders"] is not None and not isinstance(snapshot["folders"], dict):
+        raise ValueError("Invalid library folder state")
+    if not isinstance(snapshot["shopping_list"], list):
+        raise ValueError("Invalid shopping list state")
+    if snapshot["preferences"] is not None and not isinstance(snapshot["preferences"], dict):
+        raise ValueError("Invalid library preferences")
+    if not isinstance(snapshot["cooking_progress"], dict):
+        raise ValueError("Invalid cooking progress state")
+
+    try:
+        encoded = json.dumps(snapshot, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError, RecursionError):
+        raise ValueError("Invalid library snapshot") from None
+    if len(encoded) > 262_144:
+        raise ValueError("Library snapshot is too large")
+    return snapshot
+
+
+class UserLibraryStateUpdateRequest(BaseModel):
+    revision: int = Field(ge=0)
+    snapshot: dict[str, Any]
+
+    @field_validator("snapshot")
+    @classmethod
+    def _validate_library_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _normalize_library_snapshot(value)
+
+
+class UserLibraryStateHistoryEntry(BaseModel):
+    revision: int = Field(ge=1)
+    snapshot: dict[str, Any]
+    updated_at: datetime | None = None
+
+    @field_validator("snapshot")
+    @classmethod
+    def _normalize_history_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _normalize_library_snapshot(value, allow_legacy_empty=True)
+
+
+class UserLibraryStateResponse(BaseModel):
+    revision: int
+    snapshot: dict[str, Any]
+    history: list[UserLibraryStateHistoryEntry] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+    @field_validator("snapshot")
+    @classmethod
+    def _normalize_stored_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _normalize_library_snapshot(value, allow_legacy_empty=True)
+
+    @field_validator("history", mode="before")
+    @classmethod
+    def _normalize_stored_history(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("Invalid library state history")
+        normalized: list[UserLibraryStateHistoryEntry] = []
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                normalized.append(UserLibraryStateHistoryEntry.model_validate(entry))
+            except ValidationError:
+                # Keep the current snapshot readable if one old history row is
+                # malformed; the client treats history as recovery-only data.
+                continue
+        return normalized
 
 
 class RecipeListResponse(BaseModel):
