@@ -94,7 +94,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *reciapp-environment
-      WORKER_ENABLED: "false"
+      WORKER_ENABLED: "true"
     networks:
       - reciapp-internal
       - coolify
