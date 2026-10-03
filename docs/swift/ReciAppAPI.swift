@@ -114,7 +114,7 @@ final class ReciNoRedirectDelegate: NSObject, URLSessionTaskDelegate {
 actor ReciAppAPI {
     // refresh=true only after a rejected token; normal calls use auth.session.
     typealias TokenProvider = @Sendable (_ refresh: Bool) async throws -> String
-    private let baseURL = URL(string: "https://51-255-43-100.sslip.io")!
+    private let baseURL = URL(string: "https://api.acasillas.com/reciapp")!
     private let session: URLSession
     private let tokenProvider: TokenProvider
 

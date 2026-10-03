@@ -73,13 +73,13 @@ def request_host(request: Request) -> str:
 
 
 def is_public_dashboard_host(request: Request) -> bool:
-    """True when request hits the public internet hostname (sslip / public IP)."""
+    """True when request hits a public API hostname or public IP."""
     host = request_host(request)
     if not host:
         return True
     if host.endswith(".sslip.io") or host.endswith(".nip.io"):
         return True
-    if host == "51.255.43.100":
+    if host in {"51.255.43.100", "api.acasillas.com", "acasillas.com", "www.acasillas.com"}:
         return True
     return False
 

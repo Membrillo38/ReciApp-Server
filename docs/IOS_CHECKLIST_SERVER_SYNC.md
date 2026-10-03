@@ -1,7 +1,7 @@
 # Checklist iOS ↔ server (VPS)
 
 Server en Coolify `main`. Margen Pro **40%**, reserva job **50¢**, OCR último recurso.  
-API: `https://51-255-43-100.sslip.io`  
+API objetivo: `https://api.acasillas.com/reciapp`
 Free: **3 miss / año**. Pro fair-use: budget = precio×0.60.
 
 Usa esto como lista de huecos en la app. Lo ya OK se marca.
@@ -10,7 +10,7 @@ Usa esto como lista de huecos en la app. Lo ya OK se marca.
 
 ## Ya alineado (server + iOS base)
 
-- [x] `AppConfig.apiBaseURL` → VPS `51-255-43-100.sslip.io` (no Render).
+- [ ] `AppConfig.apiBaseURL` → `https://api.acasillas.com/reciapp` (pendiente de DNS, HTTPS y despliegue).
 - [x] Superwall `identify` + attribute **`user_id`** (UUID backend). Server acepta también legacy `supabase_user_id`.
 - [x] Paywall en `FREE_WEEKLY_LIMIT` / `FREE_YEARLY_LIMIT` (= 3/año en prod).
 - [x] UI fair-use en `PRO_FAIR_USE_LIMIT`.
