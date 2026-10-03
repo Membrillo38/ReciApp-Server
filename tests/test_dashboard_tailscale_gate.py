@@ -37,6 +37,17 @@ def test_public_sslip_via_forwarded_host_blocked():
     assert dashboard_publicly_blocked(req)
 
 
+def test_public_acasillas_api_host_dashboard_blocked():
+    req = _req("/dashboard", "api.acasillas.com")
+    assert is_public_dashboard_host(req)
+    assert dashboard_publicly_blocked(req)
+
+
+def test_public_acasillas_api_forwarded_host_dashboard_blocked():
+    req = _req("/dashboard/ips", "10.0.1.11:8000", forwarded_host="api.acasillas.com")
+    assert dashboard_publicly_blocked(req)
+
+
 def test_tailscale_host_dashboard_allowed():
     req = _req("/dashboard", "100.123.33.15:8090")
     assert not is_public_dashboard_host(req)
