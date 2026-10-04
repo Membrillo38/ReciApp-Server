@@ -403,3 +403,10 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Release iOS sin firma tras la corrección: build completo de app y extensión, cero errores de compilación. Solo hubo avisos de metadata App Intents omitida porque no se enlaza ese framework.
 - Validación actual: servidor `308 passed, 2 skipped`; contratos server ↔ iOS `origin/main` `6 passed`; `ClientStateHarness` `51 passed`.
 - Ambos PR siguen abiertos y sin merge. No se ha distribuido la app ni desplegado server. `/ready` continúa en 503 y restore autenticado/notificaciones físicas quedan sin aceptación runtime.
+
+### Revalidación de bloqueos — 2026-10-04
+
+- GitHub confirma PR server #3 e iOS #3 abiertos, listos para revisión, mergeables; ninguno integrado todavía. No hay checks CI reportados en los dos commits.
+- Probe actual sigue igual: `/health` 200, `/ready` 503 (`ValueError`), restore GET 405, library-state GET 401. El server no expone qué check concreto falla; falta desplegar el diagnóstico nuevo y leer `error_code` en Coolify.
+- Sentry iOS solo arranca si Release recibe `SENTRY_DSN` por build setting/Info.plist. `origin/main` no contiene workflow de build; sin esa variable, `ReciSentry.configure()` retorna silenciosamente y telemetría iOS queda apagada. Confirmar variable en el proceso que genera el Archive, sin compartir el valor.
+- Textos críticos de restore tienen cobertura parcial: tres strings existen solo en es-ES/es-MX; la banda Pro, error de biblioteca y CTA tienen ca/es-ES/es-MX. Otros idiomas compatibles muestran fallback inglés. No impide compilar, pero sí contradice expectativa de recuperación completamente localizada.
