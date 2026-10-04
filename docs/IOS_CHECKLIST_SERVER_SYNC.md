@@ -6,10 +6,10 @@ Free: **3 miss / año**. Pro fair-use: budget = precio×0.60.
 
 ## Estado actual de entrega (2026-10-04)
 
-- iOS commit `8441860` publicado en `codex/reciapp-ios-integration`; Release sin firma compila app/extensión y `ClientStateHarness` pasa 51 casos. Archive firmado, distribución y prueba de dispositivo siguen pendientes.
-- Coolify Compose local alinea API/worker en `WORKER_ENABLED=true` y exige certificado raíz Apple/APNs explícitos. Probe más reciente: host nuevo `/health` 200, `/ready` 503 (`ValueError`), restore GET 405 y library-state GET 401. API llega a FastAPI, pero readiness falla.
+- `origin/main` de iOS ya contiene restore/biblioteca sincronizados y endpoint `https://api.acasillas.com/reciapp`; el URL builder conserva el prefijo. Rama de integración `8441860` compila Release sin firma y `ClientStateHarness` pasa 51 casos. Archive firmado, distribución y prueba en dispositivo siguen pendientes.
+- `origin/main` ahora incluye worker durable y certificado raíz Apple G3 integrado; rama de integración añade código seguro para diagnosticar readiness. Probe público repetido el 2026-10-04: `/health` 200, `/ready` 503 (`ValueError`), restore GET 405 y library-state GET 401. API llega a FastAPI, pero readiness falla; despliegue/código de logs efectivo aún no verificado.
 - App Store Production funciona solo si `APPLE_ENVIRONMENT=Production`. TestFlight usa Sandbox; API valida un único entorno, así que restore/webhooks de TestFlight fallan contra la configuración Production.
-- Suite server actual: `307 passed, 2 skipped`. Esto valida código local, no despliegue, cuenta ni dispositivo.
+- Suite server actual: `308 passed, 2 skipped`; contratos contra iOS `origin/main`: `6 passed`. Esto valida código local, no despliegue, cuenta ni dispositivo.
 
 Usa esto como lista de huecos en la app. Lo ya OK se marca.
 

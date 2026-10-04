@@ -8,9 +8,9 @@
 
 ## Deploy order
 
-1. Apply `migrations/001_init.sql` on self-hosted Postgres. Keep `WORKER_ENABLED=false` until a worker is authorized.
+1. Apply `migrations/001_init.sql` on self-hosted Postgres. For API-only deployment keep `WORKER_ENABLED=false`; the Coolify Compose stack runs API and worker together with the durable worker enabled.
 2. Set `DASHBOARD_TOTP_SECRET`, `DASHBOARD_SESSION_SECRET`, `BILLING_GUARD_ENABLED=true` and budget variables on the VPS.
-3. Configure Apple App Store Server Notifications V2 at `/v1/webhooks/apple` with `APPLE_ROOT_CA_PEM`.
+3. Configure Apple App Store Server Notifications V2 at `/v1/webhooks/apple`. The public Apple Root CA - G3 is bundled; set `APPLE_ROOT_CA_PEM` only when rotating or overriding that trust anchor.
 4. Apply `migrations/004_apple_provider_tokens.sql`. Set `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` so `POST /v1/auth/apple` can exchange an optional `authorization_code` and encrypt the Apple refresh token.
 5. Configure Superwall webhook signing. Unsigned events are rejected.
 6. Configure provider-side spend limits and alerts at 50%, 75%, 90% and 100%.

@@ -13,7 +13,7 @@ Required:
 - `DATABASE_URL` — existing ReciApp PostgreSQL connection, using the restricted `reciapp_runtime` role (LOGIN, NOSUPERUSER, NOBYPASSRLS). Preserve the database; do not connect the app as the migration/admin role.
 - `REDIS_URL` — existing ReciApp Redis connection.
 - `AUTH_JWT_SECRET` — existing signing secret; preserve it so current sessions remain valid.
-- `APPLE_ROOT_CA_PEM` — Apple root certificate PEM used to verify App Store transactions and notifications. This is a public certificate, not the APNs `.p8` private key. `/ready` fails without a valid certificate, and Compose now rejects an unset value.
+- `APPLE_ROOT_CA_PEM` — optional override for the bundled Apple Root CA G3 certificate used to verify App Store transactions and notifications. This is a public certificate, not the APNs `.p8` private key. The current server image bundles the root certificate; leave this unset unless Apple rotates the trust anchor.
 - `APPLE_ENVIRONMENT` — choose `Production` for App Store transactions. TestFlight uses `Sandbox`; current server accepts only one environment, so do not point a mixed TestFlight/App Store population at this deployment until environment isolation is implemented.
 - `APNS_ENABLED=true` — required to turn on remote recipe-completion notifications. Also set APNs Team ID, Key ID, `.p8` key, and production environment for TestFlight/App Store distribution builds.
 

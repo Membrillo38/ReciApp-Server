@@ -377,7 +377,7 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 ### Revisión del despliegue Coolify y restauración — 2026-10-04
 
 - Corregí el Compose local: API y worker deben usar `WORKER_ENABLED=true`; con API en `false`, `/ready` rechaza el modo durable al ver worker/heartbeat o APNs activos.
-- Compose exige ahora `APPLE_ROOT_CA_PEM`, `APPLE_ENVIRONMENT` y `APNS_ENABLED` explícitos. Antes, PEM vacío fallaba readiness y APNs apagado por defecto podía dejar notificaciones remotas silenciosamente deshabilitadas. `.env.example` y guía apuntan al dominio nuevo.
+- Compose exige `APPLE_ENVIRONMENT` y `APNS_ENABLED` explícitos. El servidor `main` ahora incluye Apple Root CA G3 y usa `APPLE_ROOT_CA_PEM` solo como override opcional; APNs sigue siendo un ajuste operativo explícito.
 - Contrato de rutas actual: todas las 16 rutas usadas por `APIClient` tienen equivalente FastAPI; restore usa `POST /v1/me/subscription/restore`. Base path `/reciapp` se conserva en el URL builder iOS y Traefik lo elimina antes del API.
 - Pruebas focalizadas readiness, restore y Superwall: `28 passed`; manifiesto YAML parsea y ambos servicios tienen modo worker habilitado.
 - No hay aceptación runtime actual. Los probes directos desde el entorno aislado fallan en DNS; los probes públicos con acceso de red muestran API antigua parcialmente viva y host Coolify nuevo devolviendo 503. No pude verificar variables reales, respuesta restore autenticada, toque en iPhone o entrega APNs.
@@ -388,11 +388,10 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Build iOS actual: Release para `generic/platform=iOS`, sin firma, compila app y extensión con cero errores/avisos usando dependencias SPM descargadas en entorno temporal. `ClientStateHarness`: `51 passed`. Esto valida el cambio de URL/prefix; no crea Archive firmado ni prueba TestFlight, Simulator o dispositivo.
 - Commits publicados: server `a4dfb64` e iOS `8441860`, en ramas `codex/reciapp-*-integration`. No hay despliegue Coolify ni distribución de la app confirmados.
 - `/ready` ocultaba la causa concreta tras `ValueError`. Añadí códigos internos allowlisted al log de Coolify (sin SQL, DSN ni valores de configuración); respuesta HTTP pública mantiene error genérico. Así, tras desplegar esta versión, logs diferenciarán migración/rol/root Apple/APNs/worker.
-- Suite completa tras este diagnóstico: `307 passed, 2 skipped`.
+- Suite completa sobre rama sincronizada con el `main` actual: `308 passed, 2 skipped`.
 
 ### Probe público Coolify — 2026-10-04 (revalidado)
 
-- Con acceso de red de solo lectura: host antiguo `/health` = 200, `/ready` = 503 (`status=unavailable`, `error=ValueError`, `environment=production`), restore por GET = 405 (ruta POST presente).
-- Reprobe más reciente: host nuevo `/reciapp/health` = 200; `/ready` = 503 con `ValueError`; restore GET = 405; library-state GET = 401. La ruta nueva ya llega a FastAPI y los endpoints existen, pero API sigue no-ready. Tres probes consecutivos mantuvieron `/ready` en 503.
+- Reprobe público de solo lectura tras actualizar referencias Git: host nuevo `/reciapp/health` = 200; `/ready` = 503 con `ValueError`; restore GET = 405; library-state GET = 401. API llega a FastAPI y los endpoints existen, pero API sigue no-ready.
 - Probe anterior devolvió 503 `text/plain`; estado actual mejoró en routing/arranque, pero no en readiness. Sin logs/config efectiva Coolify no se identifica qué condición genera `ValueError`.
-- `ready()` local ahora escribe `error_code` seguro en logs de aplicación, sin exponer SQL/DSN en respuesta pública. Para diagnosticar restore, Coolify debe desplegar `a4dfb64`; sus logs mostrarán código seguro de esquema/migración, permisos DB, certificado Apple, APNs o worker. Hasta entonces la llamada de restore puede fallar con 503 y servidor no confirma Pro.
+- `ready()` de la rama de integración escribe `error_code` seguro en logs de aplicación, sin exponer SQL/DSN en respuesta pública. Producción necesita esa versión para distinguir código de migración/esquema, permisos DB, certificado Apple, APNs o worker. El `503` actual confirma que la instancia no está lista; no permite atribuir una causa más concreta sin logs.
