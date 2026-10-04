@@ -395,3 +395,11 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - Reprobe público de solo lectura tras actualizar referencias Git: host nuevo `/reciapp/health` = 200; `/ready` = 503 con `ValueError`; restore GET = 405; library-state GET = 401. API llega a FastAPI y los endpoints existen, pero API sigue no-ready.
 - Probe anterior devolvió 503 `text/plain`; estado actual mejoró en routing/arranque, pero no en readiness. Sin logs/config efectiva Coolify no se identifica qué condición genera `ValueError`.
 - `ready()` de la rama de integración escribe `error_code` seguro en logs de aplicación, sin exponer SQL/DSN en respuesta pública. Producción necesita esa versión para distinguir código de migración/esquema, permisos DB, certificado Apple, APNs o worker. El `503` actual confirma que la instancia no está lista; no permite atribuir una causa más concreta sin logs.
+
+### Revisión de ramas actuales y build — 2026-10-04
+
+- Sincronicé la rama server con `origin/main` (`6def809`), que ya incluye worker durable y Apple Root CA G3 empaquetado. Commit de rama `0ac357d`; PR draft [ReciApp-Server #3](https://github.com/Membrillo38/ReciApp-Server/pull/3).
+- El `origin/main` iOS fallaba Release: `BackendEndpoints.swift` no estaba incluido en `project.pbxproj`; Sentry 9.29 también requiere la llamada explícita `start(configureOptions:)` en este módulo. Corregido en `cb92250`; PR draft [ReciApp-iOS #3](https://github.com/Membrillo38/ReciApp-iOS/pull/3).
+- Release iOS sin firma tras la corrección: build completo de app y extensión, cero errores de compilación. Solo hubo avisos de metadata App Intents omitida porque no se enlaza ese framework.
+- Validación actual: servidor `308 passed, 2 skipped`; contratos server ↔ iOS `origin/main` `6 passed`; `ClientStateHarness` `51 passed`.
+- Ambos PR siguen abiertos y sin merge. No se ha distribuido la app ni desplegado server. `/ready` continúa en 503 y restore autenticado/notificaciones físicas quedan sin aceptación runtime.

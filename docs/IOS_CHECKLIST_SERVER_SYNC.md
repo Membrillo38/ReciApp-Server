@@ -6,10 +6,10 @@ Free: **3 miss / año**. Pro fair-use: budget = precio×0.60.
 
 ## Estado actual de entrega (2026-10-04)
 
-- `origin/main` de iOS ya contiene restore/biblioteca sincronizados y endpoint `https://api.acasillas.com/reciapp`; el URL builder conserva el prefijo. Rama de integración `8441860` compila Release sin firma y `ClientStateHarness` pasa 51 casos. Archive firmado, distribución y prueba en dispositivo siguen pendientes.
+- `origin/main` de iOS ya contiene restore/biblioteca sincronizados y endpoint `https://api.acasillas.com/reciapp`; el URL builder conserva el prefijo. Hallé y corregí el archivo de endpoints ausente del proyecto Xcode y la llamada de Sentry 9.29 en `cb92250`, PR draft [#3](https://github.com/Membrillo38/ReciApp-iOS/pull/3). Release sin firma compila app/extensión; harness pasa 51 casos. Archive firmado, distribución y prueba en dispositivo siguen pendientes.
 - `origin/main` ahora incluye worker durable y certificado raíz Apple G3 integrado; rama de integración añade código seguro para diagnosticar readiness. Probe público repetido el 2026-10-04: `/health` 200, `/ready` 503 (`ValueError`), restore GET 405 y library-state GET 401. API llega a FastAPI, pero readiness falla; despliegue/código de logs efectivo aún no verificado.
 - App Store Production funciona solo si `APPLE_ENVIRONMENT=Production`. TestFlight usa Sandbox; API valida un único entorno, así que restore/webhooks de TestFlight fallan contra la configuración Production.
-- Suite server actual: `308 passed, 2 skipped`; contratos contra iOS `origin/main`: `6 passed`. Esto valida código local, no despliegue, cuenta ni dispositivo.
+- Suite server actual: `308 passed, 2 skipped`; contratos contra iOS `origin/main`: `6 passed`. Server PR draft [#3](https://github.com/Membrillo38/ReciApp-Server/pull/3). Esto valida código local, no despliegue, cuenta ni dispositivo.
 
 Usa esto como lista de huecos en la app. Lo ya OK se marca.
 
