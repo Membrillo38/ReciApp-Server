@@ -6,7 +6,7 @@ Free: **3 miss / año**. Pro fair-use: budget = precio×0.60.
 
 ## Estado actual de entrega (2026-10-04)
 
-- iOS tiene cambio local a la nueva URL con prefijo `/reciapp`; Release iOS sin firma compila app/extensión, pero sigue pendiente commit/archive/distribución y prueba de dispositivo.
+- iOS commit `8441860` publicado en `codex/reciapp-ios-integration`; Release sin firma compila app/extensión y `ClientStateHarness` pasa 51 casos. Archive firmado, distribución y prueba de dispositivo siguen pendientes.
 - Coolify Compose local alinea API/worker en `WORKER_ENABLED=true` y exige certificado raíz Apple/APNs explícitos. Probe más reciente: host nuevo `/health` 200, `/ready` 503 (`ValueError`), restore GET 405 y library-state GET 401. API llega a FastAPI, pero readiness falla.
 - App Store Production funciona solo si `APPLE_ENVIRONMENT=Production`. TestFlight usa Sandbox; API valida un único entorno, así que restore/webhooks de TestFlight fallan contra la configuración Production.
 - Suite server actual: `307 passed, 2 skipped`. Esto valida código local, no despliegue, cuenta ni dispositivo.
@@ -17,7 +17,7 @@ Usa esto como lista de huecos en la app. Lo ya OK se marca.
 
 ## Ya alineado (server + iOS base)
 
-- [ ] `AppConfig.apiBaseURL` → `https://api.acasillas.com/reciapp` (build local pasa; cambio aún pendiente de commit, archive firmado, distribución y prueba en dispositivo).
+- [x] `AppConfig.apiBaseURL` → `https://api.acasillas.com/reciapp` (commit `8441860`; build Release sin firma pasa). Archive firmado, distribución y prueba en dispositivo siguen pendientes.
 - [x] Superwall `identify` + attribute **`user_id`** (UUID backend). Server acepta también legacy `supabase_user_id`.
 - [x] Paywall en `FREE_WEEKLY_LIMIT` / `FREE_YEARLY_LIMIT` (= 3/año en prod).
 - [x] UI fair-use en `PRO_FAIR_USE_LIMIT`.
