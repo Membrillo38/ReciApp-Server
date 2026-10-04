@@ -47,14 +47,14 @@ class Settings(BaseSettings):
 
     superwall_webhook_secret: str = ""
     superwall_application_id: int = 54783
-    public_api_base_url: str = "https://51-255-43-100.sslip.io"
+    public_api_base_url: str = "https://api.acasillas.com/reciapp"
 
     dashboard_password: str = ""
     dashboard_session_secret: str = ""
     dashboard_totp_secret: str = ""
     dashboard_cookie_secure: bool = True
 
-    cors_origins: str = "https://51-255-43-100.sslip.io"
+    cors_origins: str = "https://api.acasillas.com"
     billing_guard_enabled: bool = True
     daily_api_budget_cents: float = 1000.0
     monthly_api_budget_cents: float = 5000.0

@@ -17,7 +17,7 @@ The values below come from the last documented dashboard inspection and can drif
 | Products (today) | `reciapp_an_3trial` (yearly + 3-day trial), `reciapp_wk` (weekly) — prices still placeholder; A/B bands below |
 | Campaign | **Pro** |
 | Placements | `free_limit_reached`, `settings_upgrade` |
-| Webhook | `https://51-255-43-100.sslip.io/v1/webhooks/superwall` |
+| Webhook objetivo | `https://api.acasillas.com/reciapp/v1/webhooks/superwall` (cambiar en Superwall tras validar DNS y HTTPS) |
 | Identify | backend user UUID. Attribute `user_id` is the same UUID. That UUID is StoreKit `appAccountToken`. |
 
 Events already selected on the webhook: `initial_purchase`, `renewal`, `cancellation`, `uncancellation`, `expiration`, `billing_issue`, `product_change`, `non_renewing_purchase`, `subscription_paused`.
@@ -56,7 +56,7 @@ Optional: App-Specific Shared Secret in Superwall application settings. StoreKit
 
 ## 2. Webhook: set `is_pro` from Superwall
 
-Endpoint: `POST /v1/webhooks/superwall` on the VPS (`https://51-255-43-100.sslip.io`).
+Endpoint objetivo: `POST /v1/webhooks/superwall` en el VPS (`https://api.acasillas.com/reciapp/v1/webhooks/superwall`). Mantener el endpoint antiguo hasta validar DNS, TLS y entrega real.
 
 Verify the Svix signature before touching the database. Superwall uses standard Svix headers (`svix-id`, `svix-timestamp`, `svix-signature`). Copy the signing secret from Superwall → Integrations → Webhooks. Store it as `SUPERWALL_WEBHOOK_SECRET` on the VPS (Coolify env). Never put it in the iOS app.
 
@@ -120,10 +120,10 @@ If you already ingest ASC notifications on the server, stop writing `is_pro` fro
 ```
 SUPERWALL_WEBHOOK_SECRET=whsec_...
 SUPERWALL_APPLICATION_ID=54783
-PUBLIC_API_BASE_URL=https://51-255-43-100.sslip.io
+PUBLIC_API_BASE_URL=https://api.acasillas.com/reciapp
 ```
 
-Confirm the public URL is still `https://51-255-43-100.sslip.io`. If it changes, update the Superwall webhook URL (do not create a second endpoint). Point Superwall only at the VPS Coolify host — never at any old hosted URL.
+Tras validar DNS y HTTPS, cambiar el webhook de Superwall a `https://api.acasillas.com/reciapp/v1/webhooks/superwall`. No crear un endpoint duplicado. Mantener el webhook anterior durante verificación y rollback.
 
 ## 5. Smoke test
 

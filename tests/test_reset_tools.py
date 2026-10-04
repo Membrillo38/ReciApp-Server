@@ -352,6 +352,40 @@ def test_authenticated_runner_fails_closed_on_missing_ids_and_slow_p95(monkeypat
         )
 
 
+def test_authenticated_runner_preserves_api_path_prefix():
+    requests = []
+
+    class Response:
+        status = 200
+        headers = {"X-Request-ID": "request-id"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return b'{"items":[]}'
+
+    def opener(request, timeout):
+        requests.append(request.full_url)
+        return Response()
+
+    result = authenticated_readiness.run_acceptance(
+        "https://api.example.com/reciapp",
+        "token",
+        100,
+        expected_host="api.example.com",
+        opener=opener,
+    )
+
+    assert result["status"] == "ok"
+    assert requests[0] == "https://api.example.com/reciapp/health"
+    assert requests[1] == "https://api.example.com/reciapp/ready"
+    assert requests[2] == "https://api.example.com/reciapp/v1/me/recipes"
+
+
 def test_authenticated_runner_rejects_unexpected_hosts_and_all_redirects():
     called = []
 
@@ -368,5 +402,14 @@ def test_authenticated_runner_rejects_unexpected_hosts_and_all_redirects():
             opener=opener,
         )
     assert called == []
+    for unsafe_path in ("/../admin", "/%2e%2e/admin", "/api//v1"):
+        with pytest.raises(ValueError, match="API base URL"):
+            authenticated_readiness.run_acceptance(
+                f"https://api.example.com{unsafe_path}",
+                "token",
+                100,
+                expected_host="api.example.com",
+                opener=opener,
+            )
     handler = authenticated_readiness._NoRedirectHandler()
     assert handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example.com") is None

@@ -316,7 +316,7 @@ def test_ready_fails_closed_when_library_state_history_is_missing(monkeypatch):
         asyncio.run(db.probe_postgres())
 
 
-def test_ready_returns_unavailable_until_required_schema_exists(monkeypatch):
+def test_ready_returns_unavailable_and_safe_operator_code_until_required_schema_exists(monkeypatch, caplog):
     @asynccontextmanager
     async def timeout_compat(_seconds):
         yield
@@ -332,3 +332,19 @@ def test_ready_returns_unavailable_until_required_schema_exists(monkeypatch):
     assert response.headers["Retry-After"] == "1"
     assert b'"status":"unavailable"' in response.body
     assert b'"error":"ValueError"' in response.body
+    assert b"migration_008_missing" not in response.body
+    assert "error_code=migration_008_missing" in caplog.text
+    assert "Required import idempotency schema is missing" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (ValueError("Apple transaction verification certificate is missing"), "apple_root_certificate_missing"),
+        (ValueError("Recipe worker heartbeat is stale"), "worker_heartbeat_stale"),
+        (TimeoutError(), "readiness_timeout"),
+        (RuntimeError("connection string must never be logged"), "dependency_unavailable"),
+    ],
+)
+def test_readiness_failure_codes_are_safe_and_actionable(error, code):
+    assert db.readiness_failure_code(error) == code

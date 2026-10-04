@@ -373,3 +373,25 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 
 - Hallazgo de compatibilidad: el servidor exige que `environment` del JWS coincida exactamente con `APPLE_ENVIRONMENT`, configurado `Production`; webhooks de otro entorno se marcan `wrong_environment`. Apple documenta que TestFlight usa `Sandbox` ([environment de notificaciones](https://developer.apple.com/documentation/appstoreservernotifications/environment)).
 - Inferencia: restore o notificaciones de una compra de TestFlight no activarán Pro en esta API de producción; restore responde 400 y el webhook se ignora. `AppConfig.apiBaseURL` es único, no hay backend de sandbox configurado en el cliente. Esto no afecta compras App Store Production. Confirmar si TestFlight también debe funcionar antes de diseñar aislamiento sandbox para no mezclar compras de prueba con entitlements de producción.
+
+### Revisión del despliegue Coolify y restauración — 2026-10-04
+
+- Corregí el Compose local: API y worker deben usar `WORKER_ENABLED=true`; con API en `false`, `/ready` rechaza el modo durable al ver worker/heartbeat o APNs activos.
+- Compose exige ahora `APPLE_ROOT_CA_PEM`, `APPLE_ENVIRONMENT` y `APNS_ENABLED` explícitos. Antes, PEM vacío fallaba readiness y APNs apagado por defecto podía dejar notificaciones remotas silenciosamente deshabilitadas. `.env.example` y guía apuntan al dominio nuevo.
+- Contrato de rutas actual: todas las 16 rutas usadas por `APIClient` tienen equivalente FastAPI; restore usa `POST /v1/me/subscription/restore`. Base path `/reciapp` se conserva en el URL builder iOS y Traefik lo elimina antes del API.
+- Pruebas focalizadas readiness, restore y Superwall: `28 passed`; manifiesto YAML parsea y ambos servicios tienen modo worker habilitado.
+- No hay aceptación runtime actual. Los probes directos desde el entorno aislado fallan en DNS; los probes públicos con acceso de red muestran API antigua parcialmente viva y host Coolify nuevo devolviendo 503. No pude verificar variables reales, respuesta restore autenticada, toque en iPhone o entrega APNs.
+- Bloqueo de canal: Apple confirma que TestFlight siempre usa Sandbox. La API actual valida un único `APPLE_ENVIRONMENT`; Production rechaza restauraciones Sandbox y omite sus webhooks. No cambiar servidor compartido a Sandbox sin aislar compras de prueba de usuarios App Store.
+- Hallazgo de integración en tooling: `authenticated_readiness.py` rechazaba base URLs con path, así que no podía comprobar `https://api.acasillas.com/reciapp`; además, E2E scripts apuntaban implícitamente al host antiguo. El runner ahora conserva el prefijo y valida traversal/doble slash; E2E exige `API` explícita para evitar writes accidentales al host equivocado. Runbook actualizado.
+- Verifiqué además que `URL.appending(path: "health")` conserva `/reciapp`, usado por el warm-up iOS.
+- Reejecuté suite completa del servidor: `303 passed, 2 skipped`. APIClient mantiene las 16 rutas alineadas con FastAPI; el test de contrato automatiza esta comparación.
+- Build iOS actual: Release para `generic/platform=iOS`, sin firma, compila app y extensión con cero errores/avisos usando dependencias SPM descargadas en entorno temporal. `ClientStateHarness`: `51 passed`. Esto valida el cambio local de URL/prefix; no crea Archive firmado ni prueba TestFlight, Simulator o dispositivo.
+- `/ready` ocultaba la causa concreta tras `ValueError`. Añadí códigos internos allowlisted al log de Coolify (sin SQL, DSN ni valores de configuración); respuesta HTTP pública mantiene error genérico. Así, tras desplegar esta versión, logs diferenciarán migración/rol/root Apple/APNs/worker.
+- Suite completa tras este diagnóstico: `307 passed, 2 skipped`.
+
+### Probe público Coolify — 2026-10-04 (revalidado)
+
+- Con acceso de red de solo lectura: host antiguo `/health` = 200, `/ready` = 503 (`status=unavailable`, `error=ValueError`, `environment=production`), restore por GET = 405 (ruta POST presente).
+- Reprobe más reciente: host nuevo `/reciapp/health` = 200; `/ready` = 503 con `ValueError`; restore GET = 405; library-state GET = 401. La ruta nueva ya llega a FastAPI y los endpoints existen, pero API sigue no-ready. Tres probes consecutivos mantuvieron `/ready` en 503.
+- Probe anterior devolvió 503 `text/plain`; estado actual mejoró en routing/arranque, pero no en readiness. Sin logs/config efectiva Coolify no se identifica qué condición genera `ValueError`.
+- `ready()` local ahora escribe `error_code` seguro en logs de aplicación, sin exponer SQL/DSN en respuesta pública. Esta mejora aún no está en la instancia observada; allí `/ready` sigue entregando solo `ValueError`.

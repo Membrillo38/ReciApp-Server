@@ -11,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -58,12 +58,15 @@ def run_acceptance(
     opener=_NO_REDIRECT_OPENER,
 ) -> dict:
     parsed = urlparse(base_url)
+    decoded_path = unquote(parsed.path)
     if (
         parsed.scheme != "https"
         or not parsed.netloc
         or parsed.username
         or parsed.password
-        or parsed.path not in {"", "/"}
+        or "\\" in decoded_path
+        or "//" in decoded_path
+        or any(segment in {".", ".."} for segment in decoded_path.split("/"))
         or parsed.query
         or parsed.fragment
         or parsed.port not in {None, 443}

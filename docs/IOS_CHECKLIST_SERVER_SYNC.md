@@ -1,8 +1,15 @@
 # Checklist iOS ↔ server (VPS)
 
-Server en Coolify `main`. Margen Pro **40%**, reserva job **50¢**, OCR último recurso.  
-API: `https://51-255-43-100.sslip.io`  
+Server target: Coolify `api.acasillas.com/reciapp`. Margen Pro **40%**, reserva job **50¢**, OCR último recurso.
+API objetivo: `https://api.acasillas.com/reciapp`.
 Free: **3 miss / año**. Pro fair-use: budget = precio×0.60.
+
+## Estado actual de entrega (2026-10-04)
+
+- iOS tiene cambio local a la nueva URL con prefijo `/reciapp`; Release iOS sin firma compila app/extensión, pero sigue pendiente commit/archive/distribución y prueba de dispositivo.
+- Coolify Compose local alinea API/worker en `WORKER_ENABLED=true` y exige certificado raíz Apple/APNs explícitos. Probe más reciente: host nuevo `/health` 200, `/ready` 503 (`ValueError`), restore GET 405 y library-state GET 401. API llega a FastAPI, pero readiness falla.
+- App Store Production funciona solo si `APPLE_ENVIRONMENT=Production`. TestFlight usa Sandbox; API valida un único entorno, así que restore/webhooks de TestFlight fallan contra la configuración Production.
+- Suite server actual: `307 passed, 2 skipped`. Esto valida código local, no despliegue, cuenta ni dispositivo.
 
 Usa esto como lista de huecos en la app. Lo ya OK se marca.
 
@@ -10,13 +17,13 @@ Usa esto como lista de huecos en la app. Lo ya OK se marca.
 
 ## Ya alineado (server + iOS base)
 
-- [x] `AppConfig.apiBaseURL` → VPS `51-255-43-100.sslip.io` (no Render).
+- [ ] `AppConfig.apiBaseURL` → `https://api.acasillas.com/reciapp` (build local pasa; cambio aún pendiente de commit, archive firmado, distribución y prueba en dispositivo).
 - [x] Superwall `identify` + attribute **`user_id`** (UUID backend). Server acepta también legacy `supabase_user_id`.
 - [x] Paywall en `FREE_WEEKLY_LIMIT` / `FREE_YEARLY_LIMIT` (= 3/año en prod).
 - [x] UI fair-use en `PRO_FAIR_USE_LIMIT`.
 - [x] `warmUpBackend()` antes de auth.
 - [x] Poll job / refresh `/v1/me` tras compra.
-- [x] Prod `/health` + `/ready` responden 200 (`environment=production`); el `/ready` desplegado aún no comprueba la migración 008. Ver [auditoría de integración](2026-09-26-app-server-integration-audit.md).
+- [ ] API Production `/health` + `/ready` responden 200; último probe público: health 200, ready 503 (`ValueError`). Logs Coolify requeridos para causa exacta. Ver [auditoría de integración](2026-09-26-app-server-integration-audit.md).
 - [x] Webhook Superwall VPS: consulta de producción del 2026-09-26 encontró 7 eventos recientes, todos procesados (3 Pro-on, 2 Pro-off y 2 cambios de estado). Esto confirma entrega y procesamiento; no sustituye compra/restauración sandbox controlada con `/v1/me` en el mismo dispositivo.
 - [ ] Compra/restauración sandbox: falta probar el ciclo completo en dispositivo y confirmar `/v1/me` → `is_pro=true` para esa cuenta.
 - [x] Server códigos job canónicos (`link_in_bio`, `extraction_retryable`, carousel, etc.).
@@ -87,9 +94,9 @@ El servidor ahora devuelve `error_code`; la app muestra el mensaje localizado, o
 
 ---
 
-## Qué no tocar en iOS
+## Pendiente iOS
 
-- No hace falta cambiar URL de API (ya VPS).
+- No distribuir hasta compilar iOS con la URL/prefijo nuevos y comprobar respuesta en dispositivo.
 - No hace falta `supabase_user_id` (ya usáis `user_id`).
 - No hace falta lógica OCR/STT en cliente: eso es solo server.
 

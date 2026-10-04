@@ -1,0 +1,178 @@
+# Coolify Git resource for the existing ReciApp API and worker.
+# Reuses existing PostgreSQL, Redis, and cover storage. Do not add data services here.
+# Configure every required secret as a runtime variable on this Coolify resource.
+
+x-reciapp-environment: &reciapp-environment
+  OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in Coolify runtime secrets}
+  API_KEY: ${API_KEY:?Set API_KEY in Coolify runtime secrets}
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in Coolify runtime secrets}
+  REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Coolify runtime secrets}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in Coolify runtime secrets}
+  AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-reciapp-api}
+  AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-reciapp-ios}
+  AUTH_ACCESS_TOKEN_TTL_SECONDS: ${AUTH_ACCESS_TOKEN_TTL_SECONDS:-3600}
+  AUTH_REFRESH_TOKEN_TTL_SECONDS: ${AUTH_REFRESH_TOKEN_TTL_SECONDS:-5184000}
+  COVER_PUBLIC_BASE_URL: ${COVER_PUBLIC_BASE_URL:-https://api.acasillas.com/reciapp}
+  COVER_STORAGE_DIR: /var/lib/reciapp/covers
+  READINESS_TIMEOUT_SECONDS: ${READINESS_TIMEOUT_SECONDS:-3}
+  MAINTENANCE_MODE: ${MAINTENANCE_MODE:-false}
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+  MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-600}
+  TRANSCRIBE_MODEL: ${TRANSCRIBE_MODEL:-gpt-4o-mini-transcribe}
+  RECIPE_MODEL: ${RECIPE_MODEL:-gpt-6-luna}
+  VISION_MODEL: ${VISION_MODEL:-gpt-6-luna}
+  JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-3600}
+  COST_TRANSCRIBE_CENTS_PER_MIN: ${COST_TRANSCRIBE_CENTS_PER_MIN:-0.3}
+  COST_TEXT_CENTS_PER_EXTRACT: ${COST_TEXT_CENTS_PER_EXTRACT:-0.1}
+  COST_OCR_CENTS_PER_SLIDE: ${COST_OCR_CENTS_PER_SLIDE:-0.25}
+  OPENAI_CHAT_INPUT_USD_PER_MTOK: ${OPENAI_CHAT_INPUT_USD_PER_MTOK:-0.10}
+  OPENAI_CHAT_OUTPUT_USD_PER_MTOK: ${OPENAI_CHAT_OUTPUT_USD_PER_MTOK:-0.50}
+  OPENAI_CHAT_CACHED_INPUT_USD_PER_MTOK: ${OPENAI_CHAT_CACHED_INPUT_USD_PER_MTOK:-0.01}
+  OPENAI_TRANSCRIBE_INPUT_USD_PER_MTOK: ${OPENAI_TRANSCRIBE_INPUT_USD_PER_MTOK:-1.25}
+  OPENAI_TRANSCRIBE_OUTPUT_USD_PER_MTOK: ${OPENAI_TRANSCRIBE_OUTPUT_USD_PER_MTOK:-5.0}
+  OPENAI_TRANSCRIBE_USD_PER_MIN: ${OPENAI_TRANSCRIBE_USD_PER_MIN:-0.003}
+  SUPERWALL_WEBHOOK_SECRET: ${SUPERWALL_WEBHOOK_SECRET:-}
+  SUPERWALL_APPLICATION_ID: ${SUPERWALL_APPLICATION_ID:-54783}
+  PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.acasillas.com/reciapp}
+  DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+  DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-}
+  DASHBOARD_TOTP_SECRET: ${DASHBOARD_TOTP_SECRET:-}
+  DASHBOARD_COOKIE_SECURE: ${DASHBOARD_COOKIE_SECURE:-true}
+  CORS_ORIGINS: ${CORS_ORIGINS:-https://api.acasillas.com}
+  BILLING_GUARD_ENABLED: ${BILLING_GUARD_ENABLED:-true}
+  DAILY_API_BUDGET_CENTS: ${DAILY_API_BUDGET_CENTS:-1000}
+  MONTHLY_API_BUDGET_CENTS: ${MONTHLY_API_BUDGET_CENTS:-5000}
+  USER_MONTHLY_BUDGET_CENTS: ${USER_MONTHLY_BUDGET_CENTS:-500}
+  MAX_JOB_COST_CENTS: ${MAX_JOB_COST_CENTS:-50}
+  LOCAL_STT_MIN_CHARS: ${LOCAL_STT_MIN_CHARS:-80}
+  CAPTION_SKIP_AUDIO_MIN_CHARS: ${CAPTION_SKIP_AUDIO_MIN_CHARS:-80}
+  MAX_VISION_FRAMES: ${MAX_VISION_FRAMES:-8}
+  FIRST_VISION_PASS_FRAMES: ${FIRST_VISION_PASS_FRAMES:-2}
+  OCR_SLIDE_MAX_TOKENS: ${OCR_SLIDE_MAX_TOKENS:-400}
+  OCR_OVERLAY_MAX_TOKENS: ${OCR_OVERLAY_MAX_TOKENS:-800}
+  MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-8}
+  MAX_CONCURRENT_JOBS_PER_USER: ${MAX_CONCURRENT_JOBS_PER_USER:-2}
+  MAX_PENDING_JOBS_PER_USER: ${MAX_PENDING_JOBS_PER_USER:-20}
+  WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+  WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-900}
+  WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-20}
+  WORKER_HEARTBEAT_TTL_SECONDS: ${WORKER_HEARTBEAT_TTL_SECONDS:-90}
+  MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-262144}
+  WEBHOOK_MAX_AGE_SECONDS: ${WEBHOOK_MAX_AGE_SECONDS:-604800}
+  APPLE_ROOT_CA_PEM: ${APPLE_ROOT_CA_PEM:?Set APPLE_ROOT_CA_PEM to Apple Root CA PEM for signed transaction verification}
+  APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-com.membri.reciapp}
+  APPLE_ENVIRONMENT: ${APPLE_ENVIRONMENT:?Set Production for App Store builds; TestFlight uses Sandbox}
+  APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+  APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+  APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+  APPLE_TOKEN_ENCRYPTION_KEY: ${APPLE_TOKEN_ENCRYPTION_KEY:-}
+  APNS_ENABLED: ${APNS_ENABLED:?Set true to enable remote recipe-completion notifications}
+  APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+  APNS_KEY_ID: ${APNS_KEY_ID:-}
+  APNS_AUTH_KEY: ${APNS_AUTH_KEY:-}
+  APNS_AUTH_KEY_B64: ${APNS_AUTH_KEY_B64:-}
+  APNS_TOPIC: ${APNS_TOPIC:-com.membri.reciapp}
+  APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}
+  TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+  RATE_LIMIT_PER_IP_PER_MINUTE: ${RATE_LIMIT_PER_IP_PER_MINUTE:-90}
+  RATE_LIMIT_PER_USER_PER_MINUTE: ${RATE_LIMIT_PER_USER_PER_MINUTE:-60}
+  RATE_LIMIT_EXTRACT_PER_IP_PER_MINUTE: ${RATE_LIMIT_EXTRACT_PER_IP_PER_MINUTE:-7}
+  RATE_LIMIT_EXTRACT_PER_USER_PER_MINUTE: ${RATE_LIMIT_EXTRACT_PER_USER_PER_MINUTE:-5}
+  RATE_LIMIT_EXTRACT_DAILY_PER_USER: ${RATE_LIMIT_EXTRACT_DAILY_PER_USER:-50}
+  HF_HOME: /tmp/hf
+  HUGGINGFACE_HUB_CACHE: /tmp/hf
+
+services:
+  recipe-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *reciapp-environment
+      WORKER_ENABLED: "true"
+    networks:
+      - reciapp-internal
+      - coolify
+    volumes:
+      - /var/lib/reciapp/covers:/var/lib/reciapp/covers:rw
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /app/tmp:size=512m,mode=1777
+    mem_limit: 3g
+    cpus: 2.5
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.routers.recipe-backend.rule=(Host(`api.acasillas.com`) && PathPrefix(`/reciapp/`))
+      - traefik.http.routers.recipe-backend.entrypoints=https
+      - traefik.http.routers.recipe-backend.tls=true
+      - traefik.http.routers.recipe-backend.tls.certresolver=letsencrypt
+      - traefik.http.routers.recipe-backend.middlewares=recipe-backend-strip-reciapp
+      - traefik.http.middlewares.recipe-backend-strip-reciapp.stripprefix.prefixes=/reciapp
+      - traefik.http.routers.recipe-backend-http.rule=(Host(`api.acasillas.com`) && PathPrefix(`/reciapp/`))
+      - traefik.http.routers.recipe-backend-http.entrypoints=http
+      - traefik.http.routers.recipe-backend-http.middlewares=recipe-backend-https-redirect
+      - traefik.http.routers.recipe-backend-http.service=recipe-backend
+      - traefik.http.middlewares.recipe-backend-https-redirect.redirectscheme.scheme=https
+      - traefik.http.services.recipe-backend.loadbalancer.server.port=8000
+
+  reciapp-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *reciapp-environment
+      WORKER_ENABLED: "true"
+      MAX_CONCURRENT_JOBS: ${WORKER_MAX_CONCURRENT_JOBS:-4}
+    networks:
+      - reciapp-internal
+    volumes:
+      - /var/lib/reciapp/covers:/var/lib/reciapp/covers:rw
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /app/tmp:size=512m,mode=1777
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  reciapp-internal:
+    external: true
+  coolify:
+    external: true

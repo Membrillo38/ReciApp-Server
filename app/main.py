@@ -40,7 +40,7 @@ from app.apns import apns_client
 from app.config import settings
 from app.dashboard_routes import router as dashboard_router
 from app.dashboard_stats import log_request
-from app.db import db_context, db_context_for_request, execute_returning, fetch_all, get_pool, probe_postgres, recipe_worker_is_healthy, reset_db
+from app.db import db_context, db_context_for_request, execute_returning, fetch_all, get_pool, probe_postgres, readiness_failure_code, recipe_worker_is_healthy, reset_db
 from app.models import (
     AdminUserCreate,
     AdminUserPatch,
@@ -537,6 +537,8 @@ async def ready() -> JSONResponse:
             await probe_postgres()
     except Exception as exc:
         error = type(exc).__name__
+        error_code = readiness_failure_code(exc)
+        logger.error("readiness check failed error_type=%s error_code=%s", error, error_code)
     return JSONResponse(
         status_code=503 if error else 200,
         content={

@@ -2,7 +2,7 @@
 # E2E smoke: admin user → JWT → extract → poll job
 set -euo pipefail
 
-API="${API:-https://51-255-43-100.sslip.io}"
+API="${API:?Set API to the intended ReciApp API base URL, including any path prefix}"
 URL="${1:-https://vm.tiktok.com/ZGdQJr1J4/}"
 LANGUAGE="${LANGUAGE:-en-US}"
 API_KEY="${API_KEY:?Set API_KEY}"

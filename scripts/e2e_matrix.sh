@@ -3,7 +3,7 @@
 # and repeated polling. Never prints tokens, transcripts, or provider payloads.
 set -euo pipefail
 
-API="${API:-https://51-255-43-100.sslip.io}"
+API="${API:?Set API to the intended ReciApp API base URL, including any path prefix}"
 API_KEY="${API_KEY:?Set API_KEY}"
 AUTH_JWT_SECRET="${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET}"
 REPEATS="${REPEATS:-2}"

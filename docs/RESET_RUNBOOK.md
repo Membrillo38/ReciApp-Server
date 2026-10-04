@@ -147,9 +147,9 @@ Keep all writers frozen. Verify exact target counts are zero and preserved finge
 
 ```bash
 read -rs RECIAPP_ACCESS_TOKEN && export RECIAPP_ACCESS_TOKEN
-export RECIAPP_EXPECTED_API_HOST=51-255-43-100.sslip.io
+export RECIAPP_EXPECTED_API_HOST=api.acasillas.com
 python3 scripts/authenticated_readiness.py \
-  --base-url https://51-255-43-100.sslip.io \
+  --base-url https://api.acasillas.com/reciapp \
   --cycles 100
 ```
 

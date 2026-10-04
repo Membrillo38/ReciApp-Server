@@ -15,6 +15,31 @@ from app.config import settings
 
 _pool: ConnectionPool | None = None
 _pool_lock = Lock()
+
+_READINESS_FAILURE_CODES = {
+    "Required import idempotency schema is missing": "migration_008_missing",
+    "Required refresh replay schema is missing": "migration_009_missing",
+    "Required push notification schema is missing": "migration_010_missing",
+    "Database role bypasses row-level security": "runtime_role_bypasses_rls",
+    "Runtime database role has incomplete privileges": "runtime_role_privileges_incomplete",
+    "Required user library state schema is missing": "migration_012_missing",
+    "Required user library state history migration is missing": "migration_013_missing",
+    "Apple transaction verification certificate is missing": "apple_root_certificate_missing",
+    "Apple transaction verification certificate is invalid": "apple_root_certificate_invalid",
+    "Recipe worker is running while durable worker mode is disabled": "worker_mode_disabled",
+    "APNs requires durable worker mode": "apns_worker_mode_disabled",
+    "APNs is enabled but its credentials are invalid": "apns_credentials_invalid",
+    "Recipe worker heartbeat is stale": "worker_heartbeat_stale",
+}
+
+
+def readiness_failure_code(error: Exception) -> str:
+    """Map readiness exceptions to safe operator diagnostics without exposing DSNs or SQL."""
+    if isinstance(error, TimeoutError):
+        return "readiness_timeout"
+    if isinstance(error, ValueError):
+        return _READINESS_FAILURE_CODES.get(str(error), "readiness_configuration_invalid")
+    return "dependency_unavailable"
 _db_actor: ContextVar[str] = ContextVar("reciapp_db_actor", default="")
 _db_user_id: ContextVar[str] = ContextVar("reciapp_db_user_id", default="")
 

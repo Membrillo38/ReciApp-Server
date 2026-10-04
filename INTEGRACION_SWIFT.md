@@ -4,7 +4,7 @@ Esta guía describe el contrato del servidor y cómo conectarlo a una app SwiftU
 
 ## 1. Configuración
 
-- API: `https://51-255-43-100.sslip.io`
+- API objetivo: `https://api.acasillas.com/reciapp` (la API se expone bajo prefijo y Traefik lo elimina al enrutar).
 - Autenticación de la API: `Authorization: Bearer <access_token del backend>`.
 - Nunca incluyas `service_role`, `API_KEY` administrativa, OpenAI ni secretos de webhooks en la app.
 
@@ -145,9 +145,9 @@ El target iOS debe tener capability Push Notifications y perfil de firma con ent
 Para verificar el backend con una sesión de prueba existente, configura `RECIAPP_ACCESS_TOKEN` mediante un mecanismo local seguro y ejecuta:
 
 ```bash
-export RECIAPP_EXPECTED_API_HOST=51-255-43-100.sslip.io
+export RECIAPP_EXPECTED_API_HOST=api.acasillas.com
 python scripts/authenticated_readiness.py \
-  --base-url https://51-255-43-100.sslip.io --cycles 100
+  --base-url https://api.acasillas.com/reciapp --cycles 100
 ```
 
 El script solo imprime métricas y estados; comprueba 100 ciclos de biblioteca/perfil y exige p95 inferior a 800 ms. `/health` y `/ready` son comprobaciones públicas: no prueban por sí mismas que login, extracción y facturación funcionen de extremo a extremo.
