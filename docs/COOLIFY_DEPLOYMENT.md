@@ -2,6 +2,17 @@
 
 `docker-compose.coolify.yml` is the target Coolify Git resource. It runs API and worker from this repository while reusing the existing `reciapp-internal` network, PostgreSQL, Redis, and `/var/lib/reciapp/covers`. It does not create, initialize, or migrate a database.
 
+## Production readiness correction — 2026-10-05
+
+Read-only inspection of the live API found two confirmed Coolify settings that make `/ready` fail:
+
+1. `DATABASE_URL` connects as `reciapp`, a PostgreSQL superuser with `BYPASSRLS`. Migration 014 has already created `reciapp_runtime` as `LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS` and granted the app permissions. In the existing API resource, change only the username/password portion of `DATABASE_URL` to use `reciapp_runtime`; preserve the existing host, port, database, and query parameters. If its password is unknown, set a new password with the database admin and save it only as a Coolify secret.
+2. The live API has `APNS_ENABLED=true` and `WORKER_ENABLED=false`. The separate worker is enabled and has a recent heartbeat. Set `WORKER_ENABLED=true` on the API as well.
+
+The live API and worker currently use different commits. Redeploy both from the same reviewed server commit. Change the Coolify API health check from `/health` to `/ready`; `/health` alone reports process liveness and hid this dependency failure. Keep `APPLE_ENVIRONMENT=Production`; do not rerun migrations or change APNs secrets for this incident. A read-only simulation using the runtime role, service RLS context, and worker enabled passed the complete readiness probe.
+
+After redeploy, verify public `/reciapp/ready` returns HTTP 200 and `status=ready`. Keep both services pointed to the existing PostgreSQL/database and cover volume; do not create a new database or expose secret values in logs/screenshots.
+
 ## Coolify runtime variables
 
 Create runtime Environment Variables/Secrets on the single ReciApp Coolify Compose resource. Compose passes shared values to both API and worker. The user creates the OpenAI key; never put it in GitHub, iOS, build arguments, or logs.
@@ -23,10 +34,10 @@ Configure `PUBLIC_API_BASE_URL=https://api.acasillas.com/reciapp` and `CORS_ORIG
 
 ## Safe cutover
 
-1. Do not deploy this resource beside the current API on the same Traefik route. The current manual Compose deployment still owns that route.
+1. Do not create a second API resource on the same Traefik route. Production currently uses an API Coolify resource and a separate `reciapp-worker`; this differs from the target single Compose resource above. Update the existing resources or plan a coordinated swap.
 2. In Coolify, prepare the Git resource and runtime variables; inspect resolved Compose configuration without printing secret values.
 3. Confirm `coolify` and `reciapp-internal` Docker networks exist; confirm the current PostgreSQL, Redis, and covers volume/path have backups and remain attached/available.
-4. Choose a controlled cutover window. Stop the old API/worker only after Coolify is ready to start against the same existing data services. Start Coolify resource, then check API `/health` and `/ready`, worker heartbeat, authentication, recipe extraction, covers, billing guard, and Superwall/Apple webhook signatures.
+4. Choose a controlled redeploy window. Keep the existing database and cover volume attached. Redeploy API and worker from the same server commit, then check API `/health` and `/ready`, worker heartbeat, authentication, recipe extraction, covers, billing guard, and Superwall/Apple webhook signatures.
 5. Keep the old deployment definition and encrypted backups for rollback. If any check fails, stop the Coolify resource and restore the old API/worker with its prior environment and route. Do not run schema initialization or destructive migrations as part of this switch.
 
 The Compose manifest is source preparation only. It does not prove Coolify variables, runtime network access, backup restore, deployment, DNS, HTTPS, or production flows. Verify each at cutover.
