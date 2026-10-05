@@ -419,3 +419,10 @@ Los puntos siguientes registran el estado intermedio antes de terminar el rollou
 - No pude consultar Sentry: `SENTRY_AUTH_TOKEN` no está configurado en el entorno. No pedir ni pegar el token en el chat; cargar uno read-only localmente y volver a consultar.
 - Pro de Apple y biblioteca ReciApp son registros distintos. Restore de compra no recrea recetas borradas del dispositivo: estas vuelven si API conserva recetas para el mismo usuario ReciApp. Pantalla vacía no permite distinguir usuario distinto, biblioteca nunca sincronizada o datos ausentes; hace falta inspeccionar `/v1/me` y `/v1/me/recipes` autenticados, sin exponer token ni datos personales.
 - El PR iOS #3 sigue abierto; no hay build instalada que incluya `e115582`. No atribuir el resultado del botón a esta reparación hasta distribuirla y probar con la misma cuenta Apple y la misma cuenta ReciApp.
+
+### Revalidación de ramas — 2026-10-05
+
+- Reejecuté la suite actual del servidor: `308 passed, 2 skipped`; `ClientStateHarness`: `51 passed`; build Release iOS app/extensión: éxito, cero errores y avisos. Son pruebas locales, sin compra/restauración autenticada ni dispositivo.
+- GitHub mantiene PR server #3 en `8301acc` e iOS #3 en `e115582`, ambos abiertos, mergeables y sin checks de CI reportados. No se integraron.
+- El bundle Release local generado en esta sesión tiene `SentryDSN` y `SentryEnvironment` vacíos; por tanto ese artefacto no envía eventos. No encontré workflow versionado que inyecte dichos valores. Esto no confirma el contenido del último build distribuido; hace falta revisar el proceso real de Archive.
+- `/ready` sigue 503 `ValueError`; no hay cambio del lado de producción. Pendiente leer `error_code` de logs Coolify una vez que la instancia use la rama con ese diagnóstico.
